@@ -13,6 +13,11 @@ export async function fetchCandidateWindows(params?: ListParams): Promise<Candid
   return toList(await apiGet<MaybePaginated<CandidateWindow>>("/api/candidates/windows", params));
 }
 
+/** GET /api/candidates/windows/{id} — single candidate record by ID. */
+export async function fetchCandidateWindow(candidateId: number): Promise<CandidateWindow> {
+  return apiGet<CandidateWindow>(`/api/candidates/windows/${candidateId}`);
+}
+
 /**
  * POST /api/candidates/check — deterministically check one planning-task against
  * one available window. Returns feasibility verdict/reason from the backend.
