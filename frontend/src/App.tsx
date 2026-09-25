@@ -1,8 +1,13 @@
 import { lazy } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
+import { RoleGuard } from "@/components/auth/role-guard";
+import { AuthProvider } from "@/context/auth-context";
 import { AppLayout } from "@/layouts/app-layout";
 
+const LoginPage = lazy(() =>
+  import("@/pages/login/login-page").then((module) => ({ default: module.LoginPage })),
+);
 const DashboardPage = lazy(() =>
   import("@/pages/dashboard/dashboard-page").then((module) => ({ default: module.DashboardPage })),
 );
@@ -29,18 +34,6 @@ const TrainImpactPage = lazy(() =>
 );
 const ControllerPage = lazy(() =>
   import("@/pages/controller/controller-page").then((module) => ({ default: module.ControllerPage })),
-);
-const DepartmentsPage = lazy(() =>
-  import("@/pages/departments/departments-page").then((module) => ({ default: module.DepartmentsPage })),
-);
-const EngineeringDepartmentPage = lazy(() =>
-  import("@/pages/departments/engineering-department-page").then((module) => ({ default: module.EngineeringDepartmentPage })),
-);
-const TractionDepartmentPage = lazy(() =>
-  import("@/pages/departments/traction-department-page").then((module) => ({ default: module.TractionDepartmentPage })),
-);
-const SignallingDepartmentPage = lazy(() =>
-  import("@/pages/departments/signalling-department-page").then((module) => ({ default: module.SignallingDepartmentPage })),
 );
 const ExecutionPage = lazy(() =>
   import("@/pages/execution/execution-page").then((module) => ({ default: module.ExecutionPage })),
@@ -73,34 +66,52 @@ const NotFoundPage = lazy(() =>
 export function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/controller" element={<ControllerPage />} />
-          <Route path="/live-map" element={<LiveMapPage />} />
-          <Route path="/maintenance" element={<MaintenancePage />} />
-          <Route path="/block-requests" element={<BlockRequestsPage />} />
-          <Route path="/planning" element={<PlanningPage />} />
-          <Route path="/candidate-windows" element={<CandidateWindowsPage />} />
-          <Route path="/block-plans" element={<BlockPlansPage />} />
-          <Route path="/train-impact" element={<TrainImpactPage />} />
-          <Route path="/departments" element={<DepartmentsPage />} />
-          <Route path="/departments/engineering" element={<EngineeringDepartmentPage />} />
-          <Route path="/departments/snt" element={<SignallingDepartmentPage />} />
-          <Route path="/departments/traction" element={<TractionDepartmentPage />} />
-          <Route path="/departments/traction-trd" element={<TractionDepartmentPage />} />
-          <Route path="/execution" element={<ExecutionPage />} />
-          <Route path="/audit" element={<AuditPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/coa" element={<CoaPage />} />
-          <Route path="/tms" element={<TmsPage />} />
-          <Route path="/tdms" element={<TdmsPage />} />
-          <Route path="/smms" element={<SmmsPage />} />
-          <Route path="/unified" element={<UnifiedPage />} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Route>
-        <Route path="/index.html" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          {/* Public Authentication Route */}
+          <Route path="/login" element={<LoginPage />} />
+
+          {/* All protected routes inside the main layout */}
+          <Route element={<AppLayout />}>
+            {/* 1. CONTROLLER EXCLUSIVE ZONE: (Purely Operations & Planning, Zero Department Workspaces) */}
+            <Route element={<RoleGuard allowedRoles={["controller"]} />}>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/controller" element={<ControllerPage />} />
+              <Route path="/live-map" element={<LiveMapPage />} />
+              <Route path="/planning" element={<PlanningPage />} />
+              <Route path="/block-requests" element={<BlockRequestsPage />} />
+              <Route path="/candidate-windows" element={<CandidateWindowsPage />} />
+              <Route path="/block-plans" element={<BlockPlansPage />} />
+              <Route path="/train-impact" element={<TrainImpactPage />} />
+              <Route path="/maintenance" element={<MaintenancePage />} />
+              <Route path="/execution" element={<ExecutionPage />} />
+              <Route path="/audit" element={<AuditPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/coa" element={<CoaPage />} />
+              <Route path="/unified" element={<UnifiedPage />} />
+            </Route>
+
+            {/* 2. TDMS EXCLUSIVE ZONE: (Only TDMS role can access /tdms) */}
+            <Route element={<RoleGuard allowedRoles={["tdms"]} />}>
+              <Route path="/tdms" element={<TdmsPage />} />
+            </Route>
+
+            {/* 3. TMS EXCLUSIVE ZONE: (Only TMS role can access /tms) */}
+            <Route element={<RoleGuard allowedRoles={["tms"]} />}>
+              <Route path="/tms" element={<TmsPage />} />
+            </Route>
+
+            {/* 4. SMMS EXCLUSIVE ZONE: (Only SMMS role can access /smms) */}
+            <Route element={<RoleGuard allowedRoles={["smms"]} />}>
+              <Route path="/smms" element={<SmmsPage />} />
+            </Route>
+
+            <Route path="*" element={<NotFoundPage />} />
+          </Route>
+
+          <Route path="/index.html" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

@@ -19,6 +19,8 @@ export default defineConfig({
     host: true,
     allowedHosts: [
       "application-programmers-coast-lee.trycloudflare.com",
+      ".loca.lt",
+      "all",
     ],
   },
 
