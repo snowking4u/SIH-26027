@@ -24,24 +24,41 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column(
-        "block_plan",
-        sa.Column("revises_plan_id", sa.Integer(), nullable=True),
-    )
-    op.create_foreign_key(
-        "fk_block_plan_revises_plan_id",
-        "block_plan",
-        "block_plan",
-        ["revises_plan_id"],
-        ["id"],
-        ondelete="RESTRICT",
-    )
-    op.create_index(
-        "ix_block_plan_revises_plan_id",
-        "block_plan",
-        ["revises_plan_id"],
-        unique=False,
-    )
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        with op.batch_alter_table("block_plan") as batch_op:
+            batch_op.add_column(sa.Column("revises_plan_id", sa.Integer(), nullable=True))
+            batch_op.create_foreign_key(
+                "fk_block_plan_revises_plan_id",
+                "block_plan",
+                ["revises_plan_id"],
+                ["id"],
+                ondelete="RESTRICT",
+            )
+            batch_op.create_index(
+                "ix_block_plan_revises_plan_id",
+                ["revises_plan_id"],
+                unique=False,
+            )
+    else:
+        op.add_column(
+            "block_plan",
+            sa.Column("revises_plan_id", sa.Integer(), nullable=True),
+        )
+        op.create_foreign_key(
+            "fk_block_plan_revises_plan_id",
+            "block_plan",
+            "block_plan",
+            ["revises_plan_id"],
+            ["id"],
+            ondelete="RESTRICT",
+        )
+        op.create_index(
+            "ix_block_plan_revises_plan_id",
+            "block_plan",
+            ["revises_plan_id"],
+            unique=False,
+        )
 
 
 def downgrade() -> None:

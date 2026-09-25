@@ -475,26 +475,54 @@ def cleanup_synthetic(db: Session) -> dict[str, int]:
     # 19-23. COA source records.
     run(
         "train_schedule",
-        delete(TrainSchedule).where(TrainSchedule.source_schedule_id.like("SYN-COA-%")),
+        delete(TrainSchedule).where(
+            or_(
+                TrainSchedule.source_schedule_id.like("SYN-COA-%"),
+                TrainSchedule.source_schedule_id.like("REAL-COA-%"),
+                TrainSchedule.source_schedule_id.like("SCH-%"),
+                TrainSchedule.remarks.like(f"%{MARKER}%")
+            )
+        ),
     )
     run(
         "train_movement",
-        delete(TrainMovement).where(TrainMovement.source_event_id.like("SYN-COA-%")),
+        delete(TrainMovement).where(
+            or_(
+                TrainMovement.source_event_id.like("SYN-COA-%"),
+                TrainMovement.source_event_id.like("REAL-COA-%"),
+                TrainMovement.source_event_id.like("MOV-%"),
+                TrainMovement.remarks.like(f"%{MARKER}%")
+            )
+        ),
     )
     run(
         "line_occupancy",
         delete(LineOccupancy).where(
             or_(
                 LineOccupancy.source_event_id.like("SYN-COA-%"),
+                LineOccupancy.source_event_id.like("REAL-%"),
                 LineOccupancy.id.in_(junk_occ_ids),
+                LineOccupancy.remarks.like(f"%{MARKER}%")
             )
         ),
     )
     run(
         "operational_event",
-        delete(OperationalEvent).where(OperationalEvent.source_event_id.like("SYN-COA-%")),
+        delete(OperationalEvent).where(
+            or_(
+                OperationalEvent.source_event_id.like("SYN-COA-%"),
+                OperationalEvent.source_event_id.like("REAL-%"),
+                OperationalEvent.remarks.like(f"%{MARKER}%")
+            )
+        ),
     )
-    run("train", delete(Train).where(Train.train_id.like("SYN-TRAIN-%")))
+    run("train", delete(Train).where(
+        or_(
+            Train.train_id.like("SYN-TRAIN-%"),
+            Train.train_id.like("TRAIN-%"),
+            Train.train_id.like("FREIGHT-%")
+        )
+    ))
 
     # 24-26. Source systems' synthetic rows (maintenance after defect/alert).
     run(

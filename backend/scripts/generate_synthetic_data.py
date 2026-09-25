@@ -194,6 +194,15 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     url = args.db_url or settings.database_url
     engine = create_engine(url, pool_pre_ping=True)
+    if url.startswith("sqlite"):
+        from datetime import datetime
+        from sqlalchemy import event
+        @event.listens_for(engine, "connect")
+        def _register_sqlite_functions(dbapi_connection, connection_record):
+            if hasattr(dbapi_connection, "create_function"):
+                dbapi_connection.create_function(
+                    "now", 0, lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                )
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     db = SessionLocal()
     start_date = args.start_date or date.today()

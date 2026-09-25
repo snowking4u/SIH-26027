@@ -166,7 +166,11 @@ def upgrade() -> None:
             server_default=sa.text("false"),
             nullable=False,
         ),
-        sa.Column("output_payload", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column(
+            "output_payload",
+            sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"),
+            nullable=True,
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(),

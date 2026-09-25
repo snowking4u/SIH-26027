@@ -180,9 +180,11 @@ export function LiveMapPage() {
     const groups = new Map<string, Location[]>();
     for (const location of locations.data ?? []) {
       if (!location.station_code) continue;
-      const list = groups.get(location.station_code) ?? [];
+      const code = location.station_code.trim();
+      if (code === "string" || code.startsWith("SYN") || code.startsWith("Synthet")) continue;
+      const list = groups.get(code) ?? [];
       list.push(location);
-      groups.set(location.station_code, list);
+      groups.set(code, list);
     }
     return Array.from(groups.entries()).sort(
       (a, b) => Math.min(...a[1].map((l) => asKm(l.km_start) ?? 0), 0) - Math.min(...b[1].map((l) => asKm(l.km_start) ?? 0), 0),
@@ -257,6 +259,7 @@ export function LiveMapPage() {
       }
     }
     return (trains.data ?? [])
+      .filter((t) => t.train_number && !t.train_number.startsWith("SYN") && !t.train_id.startsWith("SYN"))
       .map((train) => {
         const movement = latestByTrain.get(train.id) ?? null;
         const atStation = movement ? movement.station_code : null;
@@ -269,7 +272,7 @@ export function LiveMapPage() {
           flag: movement ? movement.movement_flag : null,
         };
       })
-      .filter((train) => train.atStation != null);
+      .filter((train) => train.atStation != null && train.atStation !== "string" && !train.atStation.startsWith("SYN"));
   }, [trains.data, movements.data]);
 
   const plannedBlocks = useMemo<PlannedBlock[]>(() => {
@@ -505,7 +508,7 @@ function CorridorCanvas({
   });
 
   return (
-    <div className="relative w-full overflow-x-auto pb-1" style={{ height: 470, minWidth: 640 }}>
+    <div className="relative w-full overflow-x-auto pb-1" style={{ height: 470, minWidth: Math.max(1200, junctions.length * 150) }}>
       {/* rail bed */}
       {junctions.length > 0 ? (
         <>
@@ -547,15 +550,14 @@ function CorridorCanvas({
             type="button"
             onClick={() => onSelect({ kind: "station", location: junction.location })}
             className="group absolute flex flex-col items-center"
-            style={{ left: 0, top: STATION_Y - 24 }}
-            title={`${junction.stationCode} · km ${junction.km.toFixed(0)}`}
+            style={{ left: 0, top: STATION_Y - 24, zIndex: 10 }}
+            title={`${junction.stationName ? junction.stationName + ' (' + junction.stationCode + ')' : junction.stationCode} · km ${junction.km.toFixed(0)}`}
           >
             <span
-              className="block size-10 rounded-full border-4 border-navy-900 bg-brand-500 shadow-[0_0_18px_rgba(59,130,246,0.55)] transition-transform group-hover:scale-110"
+              className="block size-8 rounded-full border-4 border-navy-900 bg-brand-500 shadow-[0_0_18px_rgba(59,130,246,0.55)] transition-transform group-hover:scale-110"
               aria-hidden="true"
             />
-            <span className="mx-auto mt-1 whitespace-nowrap text-[11px] font-bold tracking-wide text-white">{junction.stationName || junction.stationCode}</span>
-            <span className="mx-auto whitespace-nowrap font-mono text-[10px] font-semibold text-brand-300">{junction.stationCode}</span>
+            <span className="mx-auto mt-1 whitespace-nowrap font-mono text-[11px] font-extrabold tracking-wider text-white bg-navy-900/90 px-2 py-0.5 rounded border border-navy-700 shadow-sm">{junction.stationCode}</span>
             <span className="mx-auto whitespace-nowrap font-mono text-[9px] tabular-nums text-navy-400">km {junction.km.toFixed(0)}</span>
           </button>
 
@@ -582,18 +584,18 @@ function CorridorCanvas({
             const here = activeTrains.filter((t) => t.atStation === junction.stationCode);
             if (here.length === 0) return null;
             return (
-              <div className="absolute flex flex-col gap-0.5" style={{ left: 8, top: 66, width: 118 }}>
+              <div className="absolute flex flex-col gap-1 items-center" style={{ left: -59, top: RAIL_A_Y - 75, width: 118, zIndex: 20 }}>
                 {here.map((train) => (
                   <button
                     key={train.train.id}
                     type="button"
                     onClick={() => onSelect({ kind: "train", train: train.train, atStation: junction.stationCode })}
-                    className="flex items-center gap-1 rounded-md border border-navy-600 bg-navy-800 px-1.5 py-0.5 transition-colors hover:border-info hover:bg-navy-700"
-                    title={`Train ${train.number} — latest COA movement at ${junction.stationCode}`}
+                    className="flex items-center gap-1.5 rounded-md border border-brand-400/50 bg-navy-900/95 px-2 py-0.5 shadow-lg backdrop-blur-md transition-all hover:border-brand-300 hover:scale-105"
+                    title={`Train ${train.number} (${train.name || ''}) — latest COA movement at ${junction.stationCode}`}
                   >
                     <TrainGlyph flag={train.flag} />
-                    <span className="font-mono text-[10px] font-semibold text-navy-300">{train.number}</span>
-                    <span className="text-[8px] font-bold text-navy-400" aria-hidden="true">
+                    <span className="font-mono text-[11px] font-bold text-brand-300">{train.number}</span>
+                    <span className="text-[9px] font-bold text-navy-300" aria-hidden="true">
                       {train.flag === "D" ? "→" : train.flag === "A" ? "←" : "↔"}
                     </span>
                   </button>
@@ -730,7 +732,7 @@ function CorridorTimeline({ lines, plannedBlocks, windows, candidates, occupancy
             </span>
           ))}
         </div>
-        {lines.map((line) => {
+        {lines.filter((line) => line.key !== "string" && !line.key.startsWith("SYN") && !line.name.startsWith("Synthet")).slice(0, 10).map((line) => {
           const occupancyOnLine = occupancy.filter((row) => row.line_number === line.key);
           const windowsOnLine = windows.filter((row) => row.line_number === line.key);
           const plannedOnLine = plannedBlocks.filter((block) => block.line === line.key);

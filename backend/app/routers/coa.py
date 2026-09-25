@@ -439,3 +439,53 @@ def get_available_window(window_id: int, db: Session = Depends(get_db)):
 )
 def generate_available_windows(db: Session = Depends(get_db)):
     return derive_available_windows(db)
+@router.delete(
+    "/trains/purge-fake",
+    status_code=status.HTTP_200_OK,
+    tags=["COA Trains"],
+    summary="Purge fake synthetic trains",
+    description="Remove legacy synthetic trains (SYN-TRAIN-*) and associated COA records.",
+)
+def purge_fake_trains(db: Session = Depends(get_db)):
+    from sqlalchemy import delete, or_
+    fake_trains = db.scalars(
+        select(Train.id).where(
+            or_(
+                Train.train_id.like("SYN-TRAIN-%"),
+                Train.train_number.like("SYN%"),
+                Train.train_name.like("Synthetic Train%")
+            )
+        )
+    ).all()
+    if fake_trains:
+        db.execute(delete(TrainSchedule).where(TrainSchedule.train_id.in_(fake_trains)))
+        db.execute(delete(TrainMovement).where(TrainMovement.train_id.in_(fake_trains)))
+        db.execute(delete(LineOccupancy).where(LineOccupancy.train_id.in_(fake_trains)))
+        db.execute(delete(OperationalEvent).where(OperationalEvent.train_id.in_(fake_trains)))
+        db.execute(delete(Train).where(Train.id.in_(fake_trains)))
+
+    db.execute(delete(LineOccupancy).where(LineOccupancy.source_event_id.like("SYN-COA-%")))
+    db.execute(delete(TrainSchedule).where(TrainSchedule.source_schedule_id.like("SYN-COA-%")))
+    db.execute(delete(TrainMovement).where(TrainMovement.source_event_id.like("SYN-COA-%")))
+    db.execute(delete(OperationalEvent).where(OperationalEvent.source_event_id.like("SYN-COA-%")))
+    db.commit()
+    return {"message": "Fake synthetic trains purged successfully", "count": len(fake_trains)}
+
+
+@router.delete(
+    "/trains/{train_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["COA Trains"],
+    summary="Delete a train",
+    description="Delete one COA train record by internal identifier.",
+)
+def delete_train(train_id: int, db: Session = Depends(get_db)):
+    train = db.get(Train, train_id)
+    if train is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Train not found",
+        )
+    db.delete(train)
+    db.commit()
+    return None
