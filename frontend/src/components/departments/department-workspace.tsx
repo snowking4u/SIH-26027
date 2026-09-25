@@ -445,7 +445,7 @@ export function DepartmentWorkspace({ definition }: { definition: DepartmentDefi
           loading={data.state.defects.loading}
           emptyTitle="No defects or alerts"
           emptyDescription="No backend defect/failure/alert records for this department's assets yet."
-          toolbar={<SectionHeader icon={FileWarning} title="Defects, failures & alerts" description={`${data.counts.defects} unified records from TMS / TDMS / SMMS`} />}
+          toolbar={<SectionHeader icon={FileWarning} title="Defects, failures & alerts" description={`${data.counts.defects} records from inspections & fault logs`} />}
         />
       ) : null}
 

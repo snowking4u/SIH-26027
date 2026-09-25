@@ -250,7 +250,7 @@ export function AuditPage() {
       <PageHeader
         eyebrow="Organisation · Traceability"
         title="Audit Trail"
-        description="End-to-end provenance from source TMS/TDMS/SMMS ask to execution outcome. Every hop shown is a real backend record with its own timestamp — nothing is recreated in the browser."
+        description="End-to-end provenance from initial maintenance ask to execution outcome. Every hop shown is a real backend record with its own timestamp — nothing is recreated in the browser."
         actions={
           <Button variant="outline" size="sm" onClick={refresh} disabled={health.api === "checking"}>
             <RefreshCw className={health.api === "checking" ? "animate-spin" : ""} /> Refresh

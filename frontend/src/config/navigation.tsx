@@ -2,7 +2,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   BellRing,
-  Building2,
   CalendarClock,
   ClipboardList,
   FileSearch,
@@ -10,15 +9,14 @@ import {
   Layers,
   ListChecks,
   Map,
-  RadioTower,
   Settings,
   ShieldCheck,
   Target,
   TrainFront,
   Undo2,
   Wrench,
-  Zap,
 } from "lucide-react";
+import type { UserRole } from "./roles";
 
 export interface NavItem {
   label: string;
@@ -33,15 +31,12 @@ export interface NavGroup {
 }
 
 /**
- * Role-based navigation for the block-planning control system.
- *
- * Operations Control owns the executive screens; Department Workspaces are the
- * request originators; Planning & Requests covers the planning chain; Insight
- * dips into the authoritative source systems (COA/TMS/TDMS/SMMS/Unified).
+ * Controller Navigation: Purely Controller, Planning, Monitoring & Decisions.
+ * Zero department workspaces (No TDMS, No TMS, No SMMS, No Engineering, No S&T, No TRD).
  */
-export const NAV_GROUPS: NavGroup[] = [
+export const CONTROLLER_NAV_GROUPS: NavGroup[] = [
   {
-    label: "Primary",
+    label: "Operations & Control",
     items: [
       {
         label: "Overview",
@@ -64,30 +59,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Departments",
-    items: [
-      {
-        label: "Engineering",
-        path: "/departments/engineering",
-        icon: Wrench,
-        description: "Track, bridges and level crossings",
-      },
-      {
-        label: "S&T / Signal",
-        path: "/departments/snt",
-        icon: RadioTower,
-        description: "Signalling, track circuits and points",
-      },
-      {
-        label: "Traction / TRD",
-        path: "/departments/traction",
-        icon: Zap,
-        description: "Overhead equipment and traction distribution",
-      },
-    ],
-  },
-  {
-    label: "Planning",
+    label: "Planning & Decisions",
     items: [
       {
         label: "Planning",
@@ -128,49 +100,25 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Sources",
+    label: "Live Feed & Monitoring",
     items: [
       {
-        label: "Unified",
-        path: "/unified",
-        icon: Layers,
-        description: "Merged defects, maintenance and blocks",
-      },
-      {
-        label: "COA",
+        label: "COA Live Movements",
         path: "/coa",
         icon: TrainFront,
         description: "Trains, schedules, movements and occupancy",
       },
       {
-        label: "TMS",
-        path: "/tms",
-        icon: FileSearch,
-        description: "Track monitoring inspections and defects",
-      },
-      {
-        label: "TDMS",
-        path: "/tdms",
-        icon: Activity,
-        description: "Structure defect and failure records",
-      },
-      {
-        label: "SMMS",
-        path: "/smms",
-        icon: BellRing,
-        description: "Signal telecom alerts and maintenance",
+        label: "Unified Feed",
+        path: "/unified",
+        icon: Layers,
+        description: "Merged defects, maintenance and blocks",
       },
     ],
   },
   {
-    label: "Team & System",
+    label: "Execution & System",
     items: [
-      {
-        label: "Departments",
-        path: "/departments",
-        icon: Building2,
-        description: "Department directory",
-      },
       {
         label: "Maintenance",
         path: "/maintenance",
@@ -199,5 +147,62 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-/** Flat list used for fallback navigation helper code. */
-export const ALL_NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items);
+/** Filter navigation groups strictly based on the user's role */
+export function getNavGroupsForRole(role: UserRole = "controller"): NavGroup[] {
+  // TDMS isolated portal
+  if (role === "tdms") {
+    return [
+      {
+        label: "TDMS Portal",
+        items: [
+          {
+            label: "TDMS Dashboard",
+            path: "/tdms",
+            icon: Activity,
+            description: "Track structure defect & failure records",
+          },
+        ],
+      },
+    ];
+  }
+
+  // TMS isolated portal
+  if (role === "tms") {
+    return [
+      {
+        label: "TMS Portal",
+        items: [
+          {
+            label: "TMS Dashboard",
+            path: "/tms",
+            icon: FileSearch,
+            description: "Track monitoring inspections & defect register",
+          },
+        ],
+      },
+    ];
+  }
+
+  // SMMS isolated portal
+  if (role === "smms") {
+    return [
+      {
+        label: "SMMS Portal",
+        items: [
+          {
+            label: "SMMS Dashboard",
+            path: "/smms",
+            icon: BellRing,
+            description: "Signal telecom alerts & maintenance logs",
+          },
+        ],
+      },
+    ];
+  }
+
+  // Controller sees only controller operations & planning (No department workspaces)
+  return CONTROLLER_NAV_GROUPS;
+}
+
+export const NAV_GROUPS: NavGroup[] = getNavGroupsForRole("controller");
+export const ALL_NAV_ITEMS: NavItem[] = CONTROLLER_NAV_GROUPS.flatMap((group) => group.items);

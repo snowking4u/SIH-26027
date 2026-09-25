@@ -41,6 +41,37 @@ export const ENGINEERING_GROUP: AssetType[] = ["TRACK", "BRIDGE", "LEVEL_CROSSIN
 export const SNT_GROUP: AssetType[] = ["SIGNAL", "TRACK_CIRCUIT", "POINT_MACHINE"];
 export const TRACTION_GROUP: AssetType[] = ["OCS"];
 
+export const TDMS_GROUP: AssetType[] = ["TRACK", "BRIDGE", "LEVEL_CROSSING"];
+export const TMS_GROUP: AssetType[] = ["TRACK", "BRIDGE"];
+export const SMMS_GROUP: AssetType[] = ["SIGNAL", "TRACK_CIRCUIT", "POINT_MACHINE"];
+
+export const TDMS_DEFINITION: DepartmentDefinition = {
+  key: "tdms",
+  title: "TDMS — Track Defect Management System",
+  eyebrow: "Department Workspace · Structure & Rail Defects (TDMS)",
+  description: "Track structure defects, ultrasonic testing, rail fracture logs, and block planning workflows.",
+  assetTypes: TDMS_GROUP,
+  windowFilter: "TRACK",
+};
+
+export const TMS_DEFINITION: DepartmentDefinition = {
+  key: "tms",
+  title: "TMS — Track Management System",
+  eyebrow: "Department Workspace · Track Monitoring & Inspections (TMS)",
+  description: "Track monitoring inspections, OMS records, geometry defect registers, and maintenance block requests.",
+  assetTypes: TMS_GROUP,
+  windowFilter: "TRACK",
+};
+
+export const SMMS_DEFINITION: DepartmentDefinition = {
+  key: "smms",
+  title: "SMMS — Signal & Telecom Maintenance Management System",
+  eyebrow: "Department Workspace · Signal & Telecom Health (SMMS)",
+  description: "Interlocking, track circuit alerts, point machine maintenance, and S&T traffic/power block requests.",
+  assetTypes: SMMS_GROUP,
+  windowFilter: "SIGNAL",
+};
+
 function pad(value: number): string {
   return value.toString().padStart(2, "0");
 }

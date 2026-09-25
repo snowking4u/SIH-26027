@@ -1,4 +1,4 @@
-import { ChevronDown, MapPin, Menu } from "lucide-react";
+import { ChevronDown, LogOut, MapPin, Menu } from "lucide-react";
 import { useState } from "react";
 
 import { ConnectionControl } from "@/components/common/connection-control";
@@ -12,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { APP_CONFIG } from "@/config/app";
+import { ROLE_CONFIGS } from "@/config/roles";
+import { useAuth } from "@/context/auth-context";
 import type { HealthState } from "@/types/health";
 
 export interface AppTopbarProps {
@@ -21,28 +23,53 @@ export interface AppTopbarProps {
 
 function UserMenu() {
   const [open, setOpen] = useState(false);
+  const { user, logout } = useAuth();
+
+  const currentRole = user?.role || "controller";
+  const roleConfig = ROLE_CONFIGS[currentRole] || ROLE_CONFIGS.controller;
+
+  const initials = user?.name
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
+    : "CT";
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label="Controller account menu"
-          className="inline-flex items-center gap-2 rounded-md px-1.5 py-1 text-navy-300 transition-colors hover:bg-navy-800/70 hover:text-white"
+          aria-label="User account menu"
+          className="inline-flex items-center gap-2 rounded-md px-2 py-1 text-navy-300 transition-colors hover:bg-navy-800/70 hover:text-white border border-navy-700/60"
         >
-          <span className="grid size-7 place-items-center rounded-full bg-brand-600 text-[10px] font-bold text-white shadow-card">
-            CT
+          <span className="grid size-7 place-items-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-[10px] font-bold text-white shadow-card">
+            {initials}
           </span>
-          <span className="hidden text-sm font-medium md:inline">Controller</span>
+          <div className="hidden text-left sm:block">
+            <p className="text-xs font-semibold leading-tight text-white">{user?.name || "Controller"}</p>
+            <p className="text-3xs text-brand-400 leading-tight font-medium">{roleConfig.badge}</p>
+          </div>
           <ChevronDown className="size-3.5 opacity-70" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-52">
-        <DropdownMenuLabel>Controller · Ops Control</DropdownMenuLabel>
+      <DropdownMenuContent className="w-52" align="end">
+        <DropdownMenuLabel className="pb-1.5">
+          <p className="text-xs font-semibold text-white">{user?.name || "Official"}</p>
+          <p className="text-2xs font-normal text-navy-400 mt-0.5">{roleConfig.department}</p>
+        </DropdownMenuLabel>
+
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled>Profile</DropdownMenuItem>
-        <DropdownMenuItem disabled>Notifications</DropdownMenuItem>
-        <DropdownMenuItem disabled>Sign out</DropdownMenuItem>
+
+        <DropdownMenuItem
+          onClick={logout}
+          className="text-rose-400 hover:text-rose-300 focus:text-rose-300 cursor-pointer"
+        >
+          <LogOut className="size-3.5 mr-2" />
+          <span>Sign Out</span>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
