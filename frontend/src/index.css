@@ -1,0 +1,94 @@
+@import "@fontsource-variable/inter";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Deep navy control-room chrome */
+  --color-navy-950: 7 13 27;
+  --color-navy-900: 11 20 36;
+  --color-navy-850: 14 24 48;
+  --color-navy-800: 17 29 54;
+  --color-navy-700: 24 41 74;
+  --color-navy-600: 34 54 89;
+  --color-navy-500: 48 80 127;
+  --color-navy-400: 95 122 168;
+  --color-navy-300: 139 163 201;
+
+  /* Brand / operational blue */
+  --color-brand-50: 239 246 255;
+  --color-brand-100: 219 234 254;
+  --color-brand-200: 191 219 254;
+  --color-brand-300: 147 197 253;
+  --color-brand-400: 96 165 250;
+  --color-brand-500: 59 130 246;
+  --color-brand-600: 37 99 235;
+  --color-brand-700: 29 78 216;
+
+  /* Status */
+  --color-success: 22 163 74;
+  --color-warning: 217 119 6;
+  --color-danger: 220 38 38;
+  --color-info: 2 132 199;
+  --color-ai: 124 58 237;
+
+  /* Light content area */
+  --color-surface: 244 246 251;
+  --color-surface-muted: 238 241 247;
+  --color-surface-white: 255 255 255;
+  --color-ink: 26 37 54;
+  --color-ink-muted: 91 107 131;
+  --color-ink-faint: 138 151 172;
+  --color-line: 227 232 240;
+  --color-line-dark: 211 218 230;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-surface font-sans text-[15px] leading-relaxed text-ink;
+  }
+
+  ::selection {
+    @apply bg-brand-200 text-ink;
+  }
+
+  :focus-visible {
+    outline: 2px solid theme("colors.brand.500");
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Compact, deliberate scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-dark) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--color-line-dark);
+    border-radius: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* Skeleton shimmer used by LoadingState */
+  .skeleton-shimmer {
+    @apply relative overflow-hidden rounded-md bg-surface-muted;
+  }
+  .skeleton-shimmer::after {
+    content: "";
+    @apply absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-navy-500/25 to-transparent;
+  }
+}
