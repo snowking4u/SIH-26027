@@ -9,7 +9,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { APP_CONFIG } from "@/config/app";
-import { NAV_GROUPS, type NavItem } from "@/config/navigation";
+import { getNavGroupsForRole, type NavItem } from "@/config/navigation";
+import { ROLE_CONFIGS } from "@/config/roles";
+import { useAuth } from "@/context/auth-context";
 import { cn } from "@/utils/cn";
 
 const itemVariants = cva(
@@ -38,6 +40,10 @@ const itemIconVariants = cva("transition-colors [&_svg]:size-4", {
 });
 
 function BrandBlock({ collapsed }: { collapsed: boolean }) {
+  const { user } = useAuth();
+  const currentRole = user?.role || "controller";
+  const roleConfig = ROLE_CONFIGS[currentRole] || ROLE_CONFIGS.controller;
+
   return (
     <div
       className={cn(
@@ -51,7 +57,7 @@ function BrandBlock({ collapsed }: { collapsed: boolean }) {
       {!collapsed ? (
         <div className="min-w-0 leading-tight">
           <p className="truncate text-sm font-bold tracking-wide text-white">{APP_CONFIG.displayName}</p>
-          <p className="truncate text-2xs text-navy-400">Block Planning · Ops Control</p>
+          <p className="truncate text-2xs text-brand-400 font-medium">{roleConfig.badge} · Portal</p>
         </div>
       ) : null}
     </div>
@@ -110,6 +116,10 @@ export function SidebarRail({
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
+  const { user } = useAuth();
+  const currentRole = user?.role || "controller";
+  const navGroups = getNavGroupsForRole(currentRole);
+
   return (
     <TooltipProvider delayDuration={0}>
       <div
@@ -120,7 +130,7 @@ export function SidebarRail({
       >
         <BrandBlock collapsed={collapsed} />
         <nav className="flex-1 overflow-y-auto py-3" aria-label="Primary">
-          {NAV_GROUPS.map((group) => (
+          {navGroups.map((group) => (
             <div key={group.label} className="mb-4">
               {!collapsed ? (
                 <p className="mb-1 px-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-navy-400/70">
