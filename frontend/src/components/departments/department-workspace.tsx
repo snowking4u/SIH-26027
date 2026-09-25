@@ -9,11 +9,10 @@ import {
   RefreshCw,
   ScrollText,
   Target,
-  type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 
-import { cn } from "@/utils/cn";
 import { DataTable, type DataTableColumn } from "@/components/common/data-table";
 import { Drawer } from "@/components/common/drawer";
 import { ErrorState } from "@/components/common/error-state";
@@ -35,12 +34,6 @@ import type {
 } from "@/services/api/types";
 
 type TabKey = "overview" | "maintenance" | "defects" | "tasks" | "blocks" | "assets" | "request";
-
-interface TabDef {
-  key: TabKey;
-  label: string;
-  icon: LucideIcon;
-}
 
 function formatDuration(minutes: number | null | undefined): string {
   if (minutes === null || minutes === undefined) return "—";
@@ -82,21 +75,29 @@ function BooleanPill({ value }: { value: boolean }) {
 
 export function DepartmentWorkspace({ definition }: { definition: DepartmentDefinition }) {
   const data = useDepartmentData(definition);
-  const [tab, setTab] = useState<TabKey>("overview");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get("tab") as TabKey | null;
+  const tab: TabKey =
+    rawTab && ["overview", "maintenance", "defects", "tasks", "blocks", "assets", "request"].includes(rawTab)
+      ? rawTab
+      : "overview";
+
+  const setTab = (newTab: TabKey) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (newTab === "overview") {
+        next.delete("tab");
+      } else {
+        next.set("tab", newTab);
+      }
+      return next;
+    });
+  };
+
   const [selectedMaintenance, setSelectedMaintenance] = useState<UnifiedMaintenance | null>(null);
   const [selectedDefect, setSelectedDefect] = useState<UnifiedDefect | null>(null);
   const [selectedTask, setSelectedTask] = useState<PlanningTask | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<UnifiedBlockRequirement | null>(null);
-
-  const tabs: TabDef[] = [
-    { key: "overview", label: "Overview", icon: Target },
-    { key: "maintenance", label: "Maintenance", icon: ClipboardMinus },
-    { key: "defects", label: "Defects & Alerts", icon: FileWarning },
-    { key: "tasks", label: "Planning Tasks", icon: ListChecks },
-    { key: "blocks", label: "Block Requirements", icon: ClipboardList },
-    { key: "assets", label: "Assets", icon: Package },
-    { key: "request", label: "Raise Request", icon: ScrollText },
-  ];
 
   const anyError =
     data.state.defects.error ??
@@ -328,42 +329,30 @@ export function DepartmentWorkspace({ definition }: { definition: DepartmentDefi
         <ErrorState title={`Unable to reach ${definition.title} data`} message={anyError} onRetry={() => data.state.maintenance.retry()} />
       ) : null}
 
-      <div className="flex flex-wrap gap-1 rounded-lg border border-line bg-navy-950 p-1 shadow-card">
-        {tabs.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => setTab(item.key)}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
-              tab === item.key ? "bg-navy-800 text-white" : "text-navy-400 hover:text-white",
-            )}
-          >
-            <item.icon aria-hidden="true" />
-            {item.label}
-          </button>
-        ))}
-      </div>
-
       {tab === "overview" ? (
         <>
           <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
             {[
-              { label: "Assets", value: data.counts.assets, tone: "brand" },
-              { label: "Maintenance", value: data.counts.maintenance, tone: "warning" },
-              { label: "Defects & Alerts", value: data.counts.defects, tone: "danger" },
-              { label: "Block Requirements", value: data.counts.blockRequirements, tone: "info" },
-              { label: "Planning Tasks", value: data.counts.planningTasks, tone: "success" },
-              { label: "Prioritised", value: data.counts.prioritized, tone: "ai" },
+              { label: "Assets", value: data.counts.assets, target: "assets" as const },
+              { label: "Maintenance", value: data.counts.maintenance, target: "maintenance" as const },
+              { label: "Defects & Alerts", value: data.counts.defects, target: "defects" as const },
+              { label: "Block Requirements", value: data.counts.blockRequirements, target: "blocks" as const },
+              { label: "Planning Tasks", value: data.counts.planningTasks, target: "tasks" as const },
+              { label: "Prioritised", value: data.counts.prioritized, target: "tasks" as const },
             ].map((metric) => (
-              <div key={metric.label} className="rounded-lg border border-line bg-surface-white p-3.5 shadow-card">
+              <button
+                key={metric.label}
+                type="button"
+                onClick={() => setTab(metric.target)}
+                className="cursor-pointer rounded-lg border border-line bg-surface-white p-3.5 text-left shadow-card transition-all hover:border-brand-500/50 hover:bg-navy-900/40"
+              >
                 <p className="text-2xs font-semibold uppercase tracking-widest text-ink-faint">{metric.label}</p>
                 {data.state.maintenance.loading ? (
                   <p className="mt-1.5 text-2xl font-semibold text-ink tabular-nums">…</p>
                 ) : (
                   <p className="mt-1.5 text-2xl font-semibold text-ink tabular-nums">{metric.value}</p>
                 )}
-              </div>
+              </button>
             ))}
           </section>
 

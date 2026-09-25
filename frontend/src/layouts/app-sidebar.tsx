@@ -1,6 +1,6 @@
 import { cva } from "class-variance-authority";
 import { ChevronsLeft, ChevronsRight, TrainFront } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 
 import {
   Tooltip,
@@ -73,25 +73,40 @@ function NavItemLink({
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
-  const classNameFn = ({ isActive }: { isActive: boolean }) =>
-    cn("group", itemVariants({ collapsed, active: isActive }));
+  const location = useLocation();
+
+  const isCurrentActive = () => {
+    const currentPathWithSearch = location.pathname + (location.search || "");
+    if (item.path.includes("?")) {
+      return currentPathWithSearch === item.path;
+    }
+    if (location.pathname === item.path) {
+      const tabParam = new URLSearchParams(location.search).get("tab");
+      return !tabParam || tabParam === "overview";
+    }
+    return false;
+  };
+
+  const isActive = isCurrentActive();
+  const className = cn("group", itemVariants({ collapsed, active: isActive }));
 
   const link = (
-    <NavLink to={item.path} onClick={onNavigate} className={classNameFn} aria-label={collapsed ? item.label : undefined}>
-      {({ isActive }) => (
-        <>
-          {isActive && !collapsed ? (
-            <span
-              className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r bg-brand-400"
-              aria-hidden="true"
-            />
-          ) : null}
-          <span className={cn(itemIconVariants({ active: isActive }))}>
-            <item.icon aria-hidden="true" />
-          </span>
-          {!collapsed ? <span className="truncate">{item.label}</span> : null}
-        </>
-      )}
+    <NavLink
+      to={item.path}
+      onClick={onNavigate}
+      className={className}
+      aria-label={collapsed ? item.label : undefined}
+    >
+      {isActive && !collapsed ? (
+        <span
+          className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r bg-brand-400"
+          aria-hidden="true"
+        />
+      ) : null}
+      <span className={cn(itemIconVariants({ active: isActive }))}>
+        <item.icon aria-hidden="true" />
+      </span>
+      {!collapsed ? <span className="truncate">{item.label}</span> : null}
     </NavLink>
   );
 

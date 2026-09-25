@@ -84,7 +84,6 @@ const CONFIRM_COPY: Record<ConfirmState["decision"], string> = {
 const NOT_IN_BACKEND = "not modelled in the current backend data";
 const AWAITING_STATUSES = new Set(["DRAFT", "PROPOSED", "VALIDATED", "SUBMITTED"]);
 const REWORK_STATUS = "REWORK_REQUIRED";
-const MAX_QUEUE_ITEMS = 6;
 const ACTION_BUTTON = "flex-1 basis-32 justify-center";
 
 function RejectReasonDialog({
@@ -446,7 +445,6 @@ export function ControllerPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [queueExpanded, setQueueExpanded] = useState(false);
   const [candidateDetails, setCandidateDetails] = useState<Map<number, CandidateWindow>>(new Map());
   const dismissedRef = useRef(false);
   const advanceRef = useRef(false);
@@ -526,9 +524,6 @@ export function ControllerPage() {
   const validatedCount = summaries.filter((s) => s.validated).length;
   const todayKey = new Date().toDateString();
   const decidedToday = (decisions.data ?? []).filter((d) => new Date(d.decided_at).toDateString() === todayKey).length;
-
-  const visibleAwaiting = queueExpanded ? awaiting : awaiting.slice(0, MAX_QUEUE_ITEMS);
-  const remaining = Math.max(0, awaiting.length - MAX_QUEUE_ITEMS);
 
   useEffect(() => {
     const deepLink = searchParams.get("plan");
@@ -797,7 +792,7 @@ export function ControllerPage() {
               <p className="mt-1 text-2xs text-ink-muted">
                 {isLoading
                   ? "Loading…"
-                  : `${awaiting.length} awaiting decision${awaiting.length === 1 ? "" : "s"}${remaining > 0 ? ` · Showing 1–${MAX_QUEUE_ITEMS}` : ""}`}
+                  : `${awaiting.length} awaiting decision${awaiting.length === 1 ? "" : "s"}`}
               </p>
             </div>
             <span className="hidden max-w-full shrink-0 rounded-md border border-line bg-surface-muted/50 px-2 py-1 text-2xs text-ink-faint sm:inline-flex sm:flex-wrap">
@@ -805,7 +800,7 @@ export function ControllerPage() {
             </span>
           </div>
 
-          <div className="space-y-2 p-3">
+          <div className="space-y-2 p-3 max-h-[360px] overflow-y-auto">
             {isLoading ? (
               <LoadingState label="Loading pending recommendations…" />
             ) : awaiting.length === 0 ? (
@@ -815,31 +810,19 @@ export function ControllerPage() {
                 <p className="text-xs text-ink-muted">No block plans currently require controller decision.</p>
               </div>
             ) : (
-              <>
-                {visibleAwaiting.map((summary) => (
-                  <QueueItem
-                    key={summary.plan.id}
-                    summary={summary}
-                    active={selected?.plan.id === summary.plan.id}
-                    taskType={taskTypeOf(summary)}
-                    onSelect={() => {
-                      dismissedRef.current = false;
-                      setSelectedId(summary.plan.id);
-                    }}
-                    disabled={offline}
-                  />
-                ))}
-                {remaining > 0 ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full justify-center text-2xs"
-                    onClick={() => setQueueExpanded((value) => !value)}
-                  >
-                    {queueExpanded ? "Show fewer" : `View remaining ${remaining}`}
-                  </Button>
-                ) : null}
-              </>
+              awaiting.map((summary) => (
+                <QueueItem
+                  key={summary.plan.id}
+                  summary={summary}
+                  active={selected?.plan.id === summary.plan.id}
+                  taskType={taskTypeOf(summary)}
+                  onSelect={() => {
+                    dismissedRef.current = false;
+                    setSelectedId(summary.plan.id);
+                  }}
+                  disabled={offline}
+                />
+              ))
             )}
           </div>
         </section>
@@ -859,7 +842,7 @@ export function ControllerPage() {
             </div>
           </div>
 
-          <div className="space-y-2 p-3">
+          <div className="space-y-2 p-3 max-h-[300px] overflow-y-auto">
             {isLoading ? (
               <LoadingState label="Loading rework queue…" />
             ) : reworkPlans.length === 0 ? (

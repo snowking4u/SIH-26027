@@ -1,14 +1,17 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
-  BellRing,
   CalendarClock,
   ClipboardList,
+  ClipboardMinus,
   FileSearch,
+  FileWarning,
   Hammer,
   Layers,
   ListChecks,
   Map,
+  Package,
+  ScrollText,
   Settings,
   ShieldCheck,
   Target,
@@ -147,57 +150,86 @@ export const CONTROLLER_NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+function createDepartmentNavGroups(
+  basePath: string,
+  departmentName: string,
+): NavGroup[] {
+  return [
+    {
+      label: `${departmentName} Operations`,
+      items: [
+        {
+          label: "Overview",
+          path: basePath,
+          icon: Target,
+          description: `${departmentName} status, metrics & summary`,
+        },
+        {
+          label: "Maintenance",
+          path: `${basePath}?tab=maintenance`,
+          icon: ClipboardMinus,
+          description: "Scheduled & reactive maintenance logs",
+        },
+        {
+          label: "Defects & Alerts",
+          path: `${basePath}?tab=defects`,
+          icon: FileWarning,
+          description: "Defects, inspections & alerts",
+        },
+      ],
+    },
+    {
+      label: "Planning & Assets",
+      items: [
+        {
+          label: "Planning Tasks",
+          path: `${basePath}?tab=tasks`,
+          icon: ListChecks,
+          description: "Planning tasks & operations",
+        },
+        {
+          label: "Block Requirements",
+          path: `${basePath}?tab=blocks`,
+          icon: ClipboardList,
+          description: "Traffic and power block demands",
+        },
+        {
+          label: "Assets",
+          path: `${basePath}?tab=assets`,
+          icon: Package,
+          description: "Asset inventory & location details",
+        },
+      ],
+    },
+    {
+      label: "Requests",
+      items: [
+        {
+          label: "Raise Request",
+          path: `${basePath}?tab=request`,
+          icon: ScrollText,
+          description: "Submit new maintenance block requirement",
+        },
+      ],
+    },
+  ];
+}
+
 /** Filter navigation groups strictly based on the user's role */
 export function getNavGroupsForRole(role: UserRole = "controller"): NavGroup[] {
   // TDMS isolated portal
   if (role === "tdms") {
-    return [
-      {
-        label: "TDMS Portal",
-        items: [
-          {
-            label: "TDMS Dashboard",
-            path: "/tdms",
-            icon: Activity,
-            description: "Track structure defect & failure records",
-          },
-        ],
-      },
-    ];
+    return createDepartmentNavGroups("/tdms", "TDMS");
   }
 
   // TMS isolated portal
   if (role === "tms") {
-    return [
-      {
-        label: "TMS Portal",
-        items: [
-          {
-            label: "TMS Dashboard",
-            path: "/tms",
-            icon: FileSearch,
-            description: "Track monitoring inspections & defect register",
-          },
-        ],
-      },
-    ];
+    return createDepartmentNavGroups("/tms", "TMS");
   }
 
   // SMMS isolated portal
   if (role === "smms") {
-    return [
-      {
-        label: "SMMS Portal",
-        items: [
-          {
-            label: "SMMS Dashboard",
-            path: "/smms",
-            icon: BellRing,
-            description: "Signal telecom alerts & maintenance logs",
-          },
-        ],
-      },
-    ];
+    return createDepartmentNavGroups("/smms", "SMMS");
   }
 
   // Controller sees only controller operations & planning (No department workspaces)
