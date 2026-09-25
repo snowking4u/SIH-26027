@@ -8,7 +8,7 @@
   "days": 1,
   "batch_size": 1000,
   "with_optimization": true,
-  "generation_timestamp": "2026-09-25T09:25:52",
+  "generation_timestamp": "2026-09-25T14:55:54",
   "configuration_summary": {
     "seed": 42,
     "scale": "tiny",
@@ -103,7 +103,7 @@
     "processed": 558,
     "created": 558,
     "skipped": 0,
-    "infeasible": 510,
+    "infeasible": 515,
     "requires_review": 19
   },
   "optimization": {
@@ -113,7 +113,7 @@
     "run_code": "SYN-OPT-SYN-STEP11-20260925-0001-0001"
   },
   "table_counts": {
-    "location_master": 6,
+    "location_master": 21,
     "asset_master": 10,
     "asset_parameter": 2,
     "source_system": 4,
@@ -121,7 +121,7 @@
     "train_schedule": 6,
     "train_movement": 20,
     "line_occupancy": 24,
-    "operational_event": 10,
+    "operational_event": 14,
     "available_window": 18,
     "tms_inspection": 30,
     "tms_defect": 10,

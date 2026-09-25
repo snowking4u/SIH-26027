@@ -54,6 +54,20 @@ import type {
 const asKm = (value: string | number | null | undefined): number | null =>
   value === null || value === undefined || Number.isNaN(Number(value)) ? null : Number(value);
 
+/**
+ * Smallest real km_start among a station's location rows; null when the
+ * registry has no chainage value. No 0-default is invented, so a station with
+ * no recorded km shows "km —" instead of a fabricated "km 0".
+ */
+const stationMinKm = (rows: Location[]): number | null => {
+  let min: number | null = null;
+  for (const row of rows) {
+    const km = asKm(row.km_start);
+    if (km !== null && (min === null || km < min)) min = km;
+  }
+  return min;
+};
+
 const asDate = (value: string | null | undefined): string => {
   if (!value) return "—";
   const date = new Date(value);
@@ -87,7 +101,23 @@ const spanPct = (start: string | null | undefined, end: string | null | undefine
 const COLOR_CLEAR = "#34d399";
 const COLOR_OCCUPIED = "#f59e0b";
 const COLOR_BLOCK = "#ef4444";
-const COLOR_SELECTED = "#3b82f6";
+/** Reserved for train markers (TrainGlyph) so stations can never read as trains. */
+const COLOR_TRAIN = "#3b82f6";
+/** Neutral station tone (matches the white/steel station square) — never blue. */
+const COLOR_STATION = "#e2e8f0";
+
+/**
+ * Schematic layout: every station gets a fixed horizontal slot so station
+ * names, codes and km labels can never collide with their neighbour. The
+ * canvas grows with the station count and the wrapper scrolls horizontally on
+ * narrow screens instead of squeezing labels together.
+ */
+const MAP_STATION_SPACING = 150;
+const MAP_MIN_WIDTH = 900;
+const MAP_PADDING = 64;
+
+const mapCanvasWidth = (stationCount: number): number =>
+  Math.max(MAP_MIN_WIDTH, stationCount * MAP_STATION_SPACING + MAP_PADDING * 2);
 
 const STATION_Y = 230;
 const RAIL_A_Y = 150;
@@ -96,8 +126,10 @@ const RAIL_B_Y = 310;
 interface Junction {
   stationCode: string;
   stationName: string;
-  km: number;
+  /** Real km_start from the location registry; null when none is recorded. */
+  km: number | null;
   location: Location;
+  /** Station anchor and span edges in canvas pixels (not %). */
   x: number;
   left: number;
   right: number;
@@ -184,23 +216,31 @@ export function LiveMapPage() {
       list.push(location);
       groups.set(location.station_code, list);
     }
-    return Array.from(groups.entries()).sort(
-      (a, b) => Math.min(...a[1].map((l) => asKm(l.km_start) ?? 0), 0) - Math.min(...b[1].map((l) => asKm(l.km_start) ?? 0), 0),
-    );
+    return Array.from(groups.entries()).sort((a, b) => {
+      const kmA = stationMinKm(a[1]);
+      const kmB = stationMinKm(b[1]);
+      if (kmA === null && kmB === null) return a[0].localeCompare(b[0]);
+      if (kmA === null) return 1;
+      if (kmB === null) return -1;
+      return kmA - kmB || a[0].localeCompare(b[0]);
+    });
   }, [locations.data]);
+
+  const canvasWidth = mapCanvasWidth(stationLocations.length);
 
   const junctions = useMemo<Junction[]>(() => {
     const count = stationLocations.length;
+    const usable = Math.max(1, canvasWidth - MAP_PADDING * 2);
     const junctionStations = stationLocations.map(([stationCode, rows], index) => {
       const sorted = [...rows].sort((a, b) => String(a.line_code).localeCompare(String(b.line_code)));
-      const x = count > 1 ? 6 + (index * 88) / (count - 1) : 50;
+      const x = count > 1 ? MAP_PADDING + (index * usable) / (count - 1) : canvasWidth / 2;
       const run = (i: number) => sorted.filter((_, idx) => idx % 2 === i);
       const representative = sorted[0];
-      const km = Math.min(...sorted.map((l) => asKm(l.km_start) ?? 0), 0);
+      const km = stationMinKm(sorted);
       return {
         stationCode,
         stationName: representative.station_name ?? "",
-        km: Number.isFinite(km) ? km : 0,
+        km,
         location: representative,
         x,
         left: 0,
@@ -209,14 +249,16 @@ export function LiveMapPage() {
         rowB: run(1),
       };
     });
+    const railStart = MAP_PADDING / 2;
+    const railEnd = canvasWidth - MAP_PADDING / 2;
     for (let i = 0; i < junctionStations.length; i += 1) {
-      const prevX = i > 0 ? junctionStations[i - 1].x : 4;
-      const nextX = i < junctionStations.length - 1 ? junctionStations[i + 1].x : 96;
-      junctionStations[i].left = i === 0 ? 3 : (prevX + junctionStations[i].x) / 2;
-      junctionStations[i].right = i === junctionStations.length - 1 ? 97 : (junctionStations[i].x + nextX) / 2;
+      const prevX = i > 0 ? junctionStations[i - 1].x : railStart;
+      const nextX = i < junctionStations.length - 1 ? junctionStations[i + 1].x : railEnd;
+      junctionStations[i].left = i === 0 ? railStart : (prevX + junctionStations[i].x) / 2;
+      junctionStations[i].right = i === junctionStations.length - 1 ? railEnd : (junctionStations[i].x + nextX) / 2;
     }
     return junctionStations;
-  }, [stationLocations]);
+  }, [stationLocations, canvasWidth]);
 
   const tracks = useMemo<Track[]>(() => {
     const map = new Map<string, Track>();
@@ -287,6 +329,13 @@ export function LiveMapPage() {
     });
   }, [planTasks.data, candidates.data, windows.data, plans.data]);
 
+  const trainRosterCount = (trains.data ?? []).length;
+  const movementCount = (movements.data ?? []).length;
+  const trainDataPending = trains.loading || movements.loading;
+  const trainDataError = trains.error ?? movements.error;
+  /** A marker can only be derived from a train row with a recorded movement — never fabricated. */
+  const noTrainMovementData = !trainDataPending && !trainDataError && activeTrains.length === 0;
+
   const occupiedLines = useMemo(() => new Set((occupancy.data ?? []).map((row) => row.line_number)), [occupancy.data]);
 
   const stationDetail = (loc: Location) => ({
@@ -344,11 +393,12 @@ export function LiveMapPage() {
     { key: "status", header: "Status", render: (row) => <StatusBadge status={row.occupancy_status} /> },
   ];
 
-  const legend = [
+  const legend: { color: string; label: string; square?: boolean }[] = [
     { color: COLOR_CLEAR, label: "Clear" },
     { color: COLOR_OCCUPIED, label: "Occupied" },
     { color: COLOR_BLOCK, label: "Maintenance block" },
-    { color: COLOR_SELECTED, label: "Selected" },
+    { color: COLOR_TRAIN, label: "Train (recorded movement)" },
+    { color: COLOR_STATION, label: "Station (network config)", square: true },
   ];
 
   return (
@@ -356,7 +406,7 @@ export function LiveMapPage() {
       <PageHeader
         eyebrow="Operations Control · Live Map"
         title="Live Map — Railway Network"
-        description="All tracks, stations, trains, assets and blocks share one corridor canvas. Station nodes sit on the rails; the planned block overlays its exact track section. Schematic, not geographic scale."
+        description="Stations come from the network registry (GET /api/locations · location_master); trains are drawn only from recorded COA movements (GET /api/coa/trains + /api/coa/movements). The planned block overlays its exact track section. Schematic, not geographic scale."
         actions={
           <>
             <Badge variant="ai">DEMO / SYNTHETIC REPLAY</Badge>
@@ -374,6 +424,8 @@ export function LiveMapPage() {
           description={`${junctions.length} station junction(s) · ${tracks.length} line section(s) · one shared coordinate space`}
           right={
             <div className="flex items-center gap-1.5">
+              <Badge variant="outline">Trains {trainRosterCount}</Badge>
+              <Badge variant="outline">Movements {movementCount}</Badge>
               <Button variant="outline" size="icon-sm" onClick={() => setZoom((z) => Math.min(3, z * 1.25))} title="Zoom in">
                 <ZoomIn />
               </Button>
@@ -390,16 +442,35 @@ export function LiveMapPage() {
         <div className="mt-4 flex flex-wrap gap-3 border-b border-line pb-3">
           {legend.map((item) => (
             <span key={item.label} className="flex items-center gap-1.5 text-2xs text-ink-muted">
-              <span className="inline-block size-2.5 rounded-full" style={{ backgroundColor: item.color }} aria-hidden="true" />
+              <span
+                className={`inline-block size-2.5 ${item.square ? "rounded-[2px]" : "rounded-full"}`}
+                style={{ backgroundColor: item.color }}
+                aria-hidden="true"
+              />
               {item.label}
             </span>
           ))}
         </div>
 
+        {noTrainMovementData ? (
+          <div className="mt-4 flex items-start gap-3 rounded-lg border border-warning/40 bg-warning-light px-4 py-3">
+            <TrainFront className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+            <div className="text-xs">
+              <p className="font-semibold text-warning-dark">No train movement data available</p>
+              <p className="mt-0.5 text-ink-muted">
+                {trainRosterCount === 0
+                  ? "GET /api/coa/trains returned no train records, so no train positions are drawn. The station nodes below are static network configuration from GET /api/locations (location_master)."
+                  : `${trainRosterCount} train record(s) exist, but GET /api/coa/movements returned no recorded movement, so no train positions are drawn.`}
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-5 overflow-hidden rounded-lg border border-navy-800 bg-gradient-to-b from-navy-900 to-navy-950 shadow-inner">
           <div className="transition-transform duration-200" style={{ transform: `scale(${zoom})`, transformOrigin: "center top" }}>
             <CorridorCanvas
               junctions={junctions}
+              canvasWidth={canvasWidth}
               occupiedLines={occupiedLines}
               activeTrains={activeTrains}
               plannedBlocks={plannedBlocks}
@@ -418,8 +489,9 @@ export function LiveMapPage() {
 
         <p className="mt-4 text-xs text-ink-faint">
           Train positions reflect the latest recorded COA movement per train; trains without a mappable movement are not
-          drawn. Rail colour reflects recorded COA line-occupancy state; the red track segment is the validated planning
-          block. Schematic, not geographic scale.
+          drawn and no train is ever fabricated. Station nodes are drawn from the location registry, not from train data.
+          Rail colour reflects recorded COA line-occupancy state; the red track segment is the validated planning block.
+          Schematic, not geographic scale.
         </p>
       </section>
 
@@ -453,6 +525,7 @@ export function LiveMapPage() {
 
 interface CorridorCanvasProps {
   junctions: Junction[];
+  canvasWidth: number;
   occupiedLines: Set<string | null | undefined>;
   activeTrains: ActiveTrain[];
   plannedBlocks: PlannedBlock[];
@@ -465,6 +538,7 @@ interface CorridorCanvasProps {
 
 function CorridorCanvas({
   junctions,
+  canvasWidth,
   occupiedLines,
   activeTrains,
   plannedBlocks,
@@ -495,8 +569,8 @@ function CorridorCanvas({
 
   const spanStyle = (left: number, right: number, top: number, height: number, background: string, extra?: CSSProperties): CSSProperties => ({
     position: "absolute",
-    left: `${left}%`,
-    width: `${Math.max(0.2, right - left)}%`,
+    left,
+    width: Math.max(2, right - left),
     top,
     height,
     borderRadius: 4,
@@ -505,15 +579,16 @@ function CorridorCanvas({
   });
 
   return (
-    <div className="relative w-full overflow-x-auto pb-1" style={{ height: 470, minWidth: 640 }}>
+    <div className="relative w-full overflow-x-auto pb-1" style={{ height: 470 }}>
+      <div className="relative" style={{ width: Math.max(canvasWidth, 320), height: 470 }}>
       {/* rail bed */}
       {junctions.length > 0 ? (
         <>
           {[RAIL_A_Y, RAIL_B_Y].map((y) => (
             <div
               key={y}
-              className="absolute left-[2%] right-[2%]"
-              style={{ top: y - 4, height: 10, borderRadius: 8, background: "rgba(95,122,168,0.4)" }}
+              className="absolute"
+              style={{ left: 28, right: 28, top: y - 4, height: 10, borderRadius: 8, background: "rgba(95,122,168,0.4)" }}
               aria-hidden="true"
             />
           ))}
@@ -536,28 +611,43 @@ function CorridorCanvas({
 
       {/* junction connectors + station nodes */}
       {junctions.map((junction) => (
-        <div key={junction.stationCode} className="absolute -translate-x-1/2" style={{ left: `${junction.x}%`, top: 0 }}>
+        <div key={junction.stationCode} className="absolute" style={{ left: junction.x, top: 0 }}>
           {/* vertical tie between the two rails */}
           <div
             className="absolute"
-            style={{ left: -2, top: RAIL_A_Y + 5, bottom: undefined, width: 4, height: RAIL_B_Y - RAIL_A_Y - 10, background: "#b6c6e2", borderRadius: 2, opacity: 0.9 }}
+            style={{ left: -2, top: RAIL_A_Y + 5, width: 4, height: RAIL_B_Y - RAIL_A_Y - 10, background: "#b6c6e2", borderRadius: 2, opacity: 0.9 }}
             aria-hidden="true"
           />
+          {/* station node — small neutral white square centred exactly on its tie,
+              deliberately unlike the blue train chip so it can never read as a train */}
           <button
             type="button"
             onClick={() => onSelect({ kind: "station", location: junction.location })}
-            className="group absolute flex flex-col items-center"
-            style={{ left: 0, top: STATION_Y - 24 }}
-            title={`${junction.stationCode} · km ${junction.km.toFixed(0)}`}
+            className="group absolute -translate-x-1/2 p-2"
+            style={{ left: 0, top: STATION_Y - 15 }}
+            title={`Station ${junction.stationCode}${junction.stationName ? ` — ${junction.stationName}` : ""}${junction.km === null ? "" : ` · km ${junction.km.toFixed(0)}`}`}
+            aria-label={`Open station ${junction.stationCode}`}
           >
             <span
-              className="block size-10 rounded-full border-4 border-navy-900 bg-brand-500 shadow-[0_0_18px_rgba(59,130,246,0.55)] transition-transform group-hover:scale-110"
+              className="block size-3.5 rounded-[2px] border border-white bg-slate-200 shadow-[0_0_0_2px_rgba(7,13,27,0.9)] transition-transform group-hover:scale-125"
               aria-hidden="true"
             />
-            <span className="mx-auto mt-1 whitespace-nowrap text-[11px] font-bold tracking-wide text-white">{junction.stationName || junction.stationCode}</span>
-            <span className="mx-auto whitespace-nowrap font-mono text-[10px] font-semibold text-brand-300">{junction.stationCode}</span>
-            <span className="mx-auto whitespace-nowrap font-mono text-[9px] tabular-nums text-navy-400">km {junction.km.toFixed(0)}</span>
           </button>
+
+          {/* station labels — one fixed band below the node; each label is
+              capped to its 150px slot so neighbours can never overlap */}
+          <div
+            className="absolute -translate-x-1/2 flex w-[132px] flex-col items-center gap-0.5 text-center"
+            style={{ left: 0, top: STATION_Y + 14 }}
+          >
+            <span className="w-full truncate text-[11px] font-bold tracking-wide text-white" title={junction.stationName || junction.stationCode}>
+              {junction.stationName || junction.stationCode}
+            </span>
+            <span className="font-mono text-[10px] font-semibold text-slate-300">{junction.stationCode}</span>
+            <span className="font-mono text-[9px] tabular-nums text-navy-400">
+              {junction.km === null ? "km —" : `km ${junction.km.toFixed(0)}`}
+            </span>
+          </div>
 
           {/* line codes per rail */}
           {[
@@ -577,13 +667,14 @@ function CorridorCanvas({
             );
           })}
 
-          {/* trains on the rail */}
+          {/* trains on the rail — only real COA trains with a recorded movement;
+              capped at three chips so a busy station can never cover its labels */}
           {(() => {
             const here = activeTrains.filter((t) => t.atStation === junction.stationCode);
             if (here.length === 0) return null;
             return (
-              <div className="absolute flex flex-col gap-0.5" style={{ left: 8, top: 66, width: 118 }}>
-                {here.map((train) => (
+              <div className="absolute -translate-x-1/2 flex flex-col items-center gap-0.5" style={{ left: 0, top: 64, width: 132 }}>
+                {here.slice(0, 3).map((train) => (
                   <button
                     key={train.train.id}
                     type="button"
@@ -598,6 +689,16 @@ function CorridorCanvas({
                     </span>
                   </button>
                 ))}
+                {here.length > 3 ? (
+                  <button
+                    type="button"
+                    onClick={() => onSelect({ kind: "station", location: junction.location })}
+                    className="rounded-md border border-navy-600 bg-navy-800 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-navy-300 transition-colors hover:border-info hover:bg-navy-700"
+                    title={`${here.length} trains at ${junction.stationCode} — open the station for the full list`}
+                  >
+                    +{here.length - 3} more
+                  </button>
+                ) : null}
               </div>
             );
           })()}
@@ -643,8 +744,8 @@ function CorridorCanvas({
         return (
           <div
             key={`yard-${junction.stationCode}`}
-            className="absolute flex w-max flex-wrap items-center justify-center gap-1"
-            style={{ left: 0, top: 364, transform: "translateX(-50%)" }}
+            className="absolute flex flex-wrap items-center justify-center gap-1"
+            style={{ left: 0, top: 364, transform: "translateX(-50%)", width: MAP_STATION_SPACING }}
           >
             {detail.assets.length > 0 ? (
               <button
@@ -689,6 +790,7 @@ function CorridorCanvas({
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -1033,9 +1135,9 @@ function SelectionDrawer({
 
         {selection.kind === "station" ? (
           <div className="space-y-5">
-            {trainsAt(selection.location.station_code).length > 0 ? (
-              <section>
-                <SectionHeader icon={TrainFront} title="Trains at this station" description="Latest COA movement for each service." />
+            <section>
+              <SectionHeader icon={TrainFront} title="Trains at this station" description="Latest COA movement for each service." />
+              {trainsAt(selection.location.station_code).length > 0 ? (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {trainsAt(selection.location.station_code).map((train) => (
                     <div key={train.train.id} className="flex items-center gap-1.5 rounded-md border border-line px-2 py-1">
@@ -1044,8 +1146,12 @@ function SelectionDrawer({
                     </div>
                   ))}
                 </div>
-              </section>
-            ) : null}
+              ) : (
+                <p className="mt-2 text-2xs text-ink-faint">
+                  No train movement data available for this station — no recorded COA movement places a train here.
+                </p>
+              )}
+            </section>
             <section>
                   <SectionHeader icon={Boxes} title="Assets here" description={`${stationDetail(selection.location).assets.length.toString()} real /api/assets at km ${asKm(selection.location.km_start) ?? "—"}`} />
                   <DataTable rows={stationDetail(selection.location).assets} columns={assetColumns} keyField={(row) => row.id} emptyTitle="No assets" emptyDescription="Backend returned no assets for this location." />
