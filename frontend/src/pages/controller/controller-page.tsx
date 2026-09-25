@@ -9,7 +9,6 @@ import {
   ListChecks,
   MapPin,
   RefreshCw,
-  ShieldCheck,
   Target,
   TrainFront,
   Undo2,
@@ -18,9 +17,10 @@ import {
   XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { DataModeBanner } from "@/components/common/data-mode-banner";
 import { DataTable, type DataTableColumn } from "@/components/common/data-table";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingState } from "@/components/common/loading-state";
@@ -28,6 +28,14 @@ import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge } from "@/components/common/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { useHealth } from "@/hooks/useHealth";
 import { fetchAssets } from "@/services/api/assets";
@@ -57,23 +65,92 @@ import {
 interface ConfirmState {
   planId: number;
   planCode: string;
-  decision: "APPROVED" | "REJECTED";
+  decision: "APPROVED";
+}
+
+interface RejectTarget {
+  planId: number;
+  planCode: string;
 }
 
 const CONFIRM_TITLES: Record<ConfirmState["decision"], string> = {
   APPROVED: "Approve this block plan?",
-  REJECTED: "Reject this block plan?",
 };
 
 const CONFIRM_COPY: Record<ConfirmState["decision"], string> = {
   APPROVED: "Records a real APPROVED controller decision through the backend. The plan leaves the pending queue and appears in Decision History.",
-  REJECTED: "Records a real REJECTED controller decision through the backend. The plan leaves the pending queue and appears in Decision History.",
 };
 
 const NOT_IN_BACKEND = "not modelled in the current backend data";
 const AWAITING_STATUSES = new Set(["DRAFT", "PROPOSED", "VALIDATED", "SUBMITTED"]);
+const REWORK_STATUS = "REWORK_REQUIRED";
 const MAX_QUEUE_ITEMS = 6;
-const ACTION_BUTTON = "w-full justify-center";
+const ACTION_BUTTON = "flex-1 basis-32 justify-center";
+
+function RejectReasonDialog({
+  open,
+  onOpenChange,
+  planCode,
+  reason,
+  onReasonChange,
+  error,
+  busy,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  planCode: string;
+  reason: string;
+  onReasonChange: (value: string) => void;
+  error: string | null;
+  busy: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && !busy && onOpenChange(false)}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <span className="mb-1 grid size-10 place-items-center rounded-md bg-surface-muted text-ink-muted [&_svg]:size-5">
+            <XCircle aria-hidden="true" />
+          </span>
+          <DialogTitle>Reject this block plan?</DialogTitle>
+          <DialogDescription>
+            <span className="font-mono">{planCode}</span> — a rejection reason is required. It is stored in{" "}
+            <span className="font-mono">controller_decision</span> and the plan moves to the Rework queue (
+            <span className="font-mono">REWORK_REQUIRED</span>) so Planning can review the feedback and generate a revised
+            recommendation.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="mt-1">
+          <label htmlFor="reject-reason" className="text-2xs font-semibold uppercase tracking-wider text-ink-faint">
+            Rejection reason <span className="text-danger">*</span>
+          </label>
+          <textarea
+            id="reject-reason"
+            value={reason}
+            onChange={(event) => onReasonChange(event.target.value)}
+            rows={3}
+            autoFocus
+            placeholder="Tell Planning what must change before this block can be approved."
+            className="mt-1.5 w-full resize-none rounded-md border border-line bg-surface-white px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-2 focus:outline-brand-600"
+          />
+          {error ? <p className="mt-1 text-xs text-danger">{error}</p> : null}
+          <p className="mt-1 text-2xs text-ink-faint">
+            The original plan and its full audit history are preserved — nothing is deleted.
+          </p>
+        </div>
+        <DialogFooter className="mt-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={onConfirm} disabled={busy}>
+            {busy ? "Processing…" : "Reject & send to rework"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function SyntheticTag() {
   return (
@@ -83,35 +160,11 @@ function SyntheticTag() {
   );
 }
 
-function DataModeBanner() {
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border border-amber-600/40 bg-amber-600/[0.06] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex items-start gap-3">
-        <ShieldCheck className="mt-0.5 size-5 shrink-0 text-amber-600" aria-hidden="true" />
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-amber-700">Demo / Synthetic Data</p>
-          <p className="mt-1 text-2xs leading-relaxed text-ink-muted">
-            Operational records shown here are synthetic/replay data for demonstration. Controller decisions are
-            persisted through the backend. This is <span className="font-semibold text-amber-700">not</span> live
-            railway data and contains no real-time claims.
-          </p>
-        </div>
-      </div>
-      <div className="shrink-0 text-2xs lg:text-right">
-        <span className="block text-ink-faint">Source chain</span>
-        <span className="font-mono text-ink-muted">
-          TMS / TDMS / SMMS / COA → Unified → Planning → Candidate → Block Plan → Validation → Controller
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function LabeledField({ label, children, muted }: { label: string; children: ReactNode; muted?: boolean }) {
   return (
-    <div>
+    <div className="min-w-0">
       <dt className="text-2xs font-semibold uppercase tracking-wider text-ink-faint">{label}</dt>
-      <dd className={cn("mt-1 text-sm", muted ? "text-ink-muted" : "text-ink")}>{children}</dd>
+      <dd className={cn("mt-1 break-words text-sm", muted ? "text-ink-muted" : "text-ink")}>{children}</dd>
     </div>
   );
 }
@@ -128,12 +181,12 @@ function WindowBar({ start, end }: { start: string | null; end: string | null })
     return <p className="text-xs text-ink-faint">Time window not available</p>;
   }
   return (
-    <div className="flex items-center gap-3">
-      <span className="min-w-[3.5rem] font-mono text-xs font-bold tabular-nums text-ink">{formatTime(start)}</span>
-      <div className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-brand-600/10">
-        <div className="absolute inset-y-0 left-0 w-full rounded-full bg-gradient-to-r from-brand-600/50 to-brand-600/25" />
+    <div className="flex items-center gap-2">
+      <span className="min-w-[3.25rem] whitespace-nowrap font-mono text-xs font-bold tabular-nums text-ink">{formatTime(start)}</span>
+      <div className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-brand-600/10" role="presentation">
+        <div className="absolute inset-y-0 left-0 w-full rounded-full bg-gradient-to-r from-brand-600/50 to-brand-600/25" aria-hidden="true" />
       </div>
-      <span className="min-w-[3.5rem] text-right font-mono text-xs font-bold tabular-nums text-ink">{formatTime(end)}</span>
+      <span className="min-w-[3.25rem] whitespace-nowrap text-right font-mono text-xs font-bold tabular-nums text-ink">{formatTime(end)}</span>
     </div>
   );
 }
@@ -213,19 +266,24 @@ function LineageSection({
       <ol className="mt-4 space-y-0">
         {steps.map((step, index) => (
           <li key={step.label}>
-            <div className="flex items-center gap-3 rounded-lg border border-line bg-surface-white px-3 py-2">
-              <span className={cn("inline-flex items-center gap-2 text-2xs font-semibold uppercase tracking-wider", step.tone === "ok" ? "text-ink" : step.tone === "warn" ? "text-amber-700" : "text-ink-faint")}>
+            <div className="grid gap-x-3 gap-y-1 rounded-lg border border-line bg-surface-white px-3 py-2 sm:grid-cols-[minmax(0,max-content)_minmax(0,1fr)] sm:items-center">
+              <span
+                className={cn(
+                  "flex min-w-0 items-center gap-2 text-2xs font-semibold uppercase tracking-wider",
+                  step.tone === "ok" ? "text-ink" : step.tone === "warn" ? "text-amber-700" : "text-ink-faint",
+                )}
+              >
                 <span className={stepDot(step.tone)} />
                 {step.label}
               </span>
-              <span className="ml-auto text-right">
-                <span className="block font-mono text-xs font-bold text-ink">{step.code}</span>
-                <span className="block truncate text-2xs text-ink-muted">{step.detail}</span>
+              <span className="min-w-0 sm:text-right">
+                <span className="block break-words font-mono text-xs font-bold text-ink">{step.code}</span>
+                <span className="mt-0.5 block break-words text-2xs text-ink-muted">{step.detail}</span>
               </span>
             </div>
             {index < steps.length - 1 ? (
               <div className="flex justify-center py-0.5">
-                <ArrowDown className="size-3.5 text-ink-faint" aria-hidden="true" />
+                <ArrowDown className="size-3.5 shrink-0 text-ink-faint" aria-hidden="true" />
               </div>
             ) : null}
           </li>
@@ -293,7 +351,7 @@ function QueueItem({
       <span className="mt-1 block truncate font-mono text-xs font-bold text-ink">{summary.plan.plan_code}</span>
       <span className="mt-0.5 block truncate text-2xs text-ink-muted">{taskType}</span>
       <span className="mt-1 flex items-center justify-between gap-2 text-2xs text-ink-muted">
-        <span className="truncate font-mono">
+        <span className="min-w-0 truncate font-mono">
           {summary.line ?? "—"}
           {stationName ? <span className="not-italic"> · {stationName}</span> : null}
         </span>
@@ -302,6 +360,62 @@ function QueueItem({
       <span className="mt-1.5 inline-flex items-center gap-2">
         <StatusBadge status={summary.plan.status} />
         {validationBadge(summary)}
+      </span>
+    </button>
+  );
+}
+
+function ReworkItem({
+  summary,
+  active,
+  taskType,
+  onSelect,
+  disabled,
+}: {
+  summary: PlanSummary;
+  active: boolean;
+  taskType: string;
+  onSelect: () => void;
+  disabled: boolean;
+}) {
+  const rejection = summary.latestDecision?.decision === "REJECTED" ? summary.latestDecision : null;
+  const when = summary.start && summary.end ? `${formatTime(summary.start)} → ${formatTime(summary.end)}` : "No window";
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      disabled={disabled}
+      aria-pressed={active}
+      className={cn(
+        "w-full rounded-lg border px-3 py-2.5 text-left transition-colors",
+        active
+          ? "border-amber-500 bg-amber-600/5 ring-1 ring-amber-500"
+          : "border-line bg-surface-white hover:border-amber-300 hover:bg-surface-muted/30",
+        disabled && "cursor-not-allowed opacity-60",
+      )}
+    >
+      <span className="flex items-center gap-2 text-2xs font-semibold uppercase tracking-wider text-amber-700">
+        <Undo2 className="size-3.5" aria-hidden="true" />
+        Rework required
+        <span className="ml-auto font-mono normal-case tracking-normal text-ink-faint">#{summary.plan.id}</span>
+      </span>
+      <span className="mt-1 block truncate font-mono text-xs font-bold text-ink">{summary.plan.plan_code}</span>
+      <span className="mt-0.5 block truncate text-2xs text-ink-muted">{taskType}</span>
+      <span className="mt-1 flex items-center justify-between gap-2 text-2xs text-ink-muted">
+        <span className="min-w-0 truncate font-mono">{when}</span>
+        <span className="shrink-0">{rejection ? formatDateTime(rejection.decided_at) : null}</span>
+      </span>
+      {rejection?.remarks ? (
+        <span
+          className="mt-1.5 block truncate rounded-md border border-amber-600/20 bg-amber-600/[0.05] px-2 py-1 text-2xs text-ink-muted"
+          title={rejection.remarks}
+        >
+          Reason: {rejection.remarks}
+        </span>
+      ) : null}
+      <span className="mt-1.5 inline-flex items-center gap-2">
+        <StatusBadge status={summary.plan.status} />
       </span>
     </button>
   );
@@ -325,6 +439,9 @@ export function ControllerPage() {
   const assets = useAsyncResource(fetchAssets, []);
 
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<RejectTarget | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectError, setRejectError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -356,6 +473,8 @@ export function ControllerPage() {
     [plans.data, planTasks.data, candidates.data, tasks.data, windows.data, requirements.data, validations.data, decisions.data, trains.data, occupancy.data, schedules.data, locations.data, assets.data],
   );
 
+  const navigate = useNavigate();
+
   const awaiting = useMemo(
     () =>
       summaries
@@ -364,6 +483,18 @@ export function ControllerPage() {
           const aStart = a.start ? new Date(a.start).getTime() : Number.MAX_SAFE_INTEGER;
           const bStart = b.start ? new Date(b.start).getTime() : Number.MAX_SAFE_INTEGER;
           return aStart - bStart || a.plan.id - b.plan.id;
+        }),
+    [summaries],
+  );
+
+  const reworkPlans = useMemo(
+    () =>
+      summaries
+        .filter((s) => s.plan.status === REWORK_STATUS)
+        .sort((a, b) => {
+          const aAt = a.latestDecision ? new Date(a.latestDecision.decided_at).getTime() : a.plan.id;
+          const bAt = b.latestDecision ? new Date(b.latestDecision.decided_at).getTime() : b.plan.id;
+          return aAt - bAt || a.plan.id - b.plan.id;
         }),
     [summaries],
   );
@@ -464,7 +595,12 @@ export function ControllerPage() {
     ? selected.validated && selected.failedValidation === 0 && selected.warningValidation === 0
     : false;
 
-  const canApprove = selected ? !offline && !busy && selected.plan.status !== "APPROVED" && validationPassed : false;
+  const rejectionOf = (summary: PlanSummary): ControllerDecision | null =>
+    summary.latestDecision && summary.latestDecision.decision === "REJECTED" ? summary.latestDecision : null;
+
+  const canApprove = selected
+    ? !offline && !busy && AWAITING_STATUSES.has(selected.plan.status) && validationPassed
+    : false;
 
   const runValidation = async (summary: PlanSummary) => {
     setBusy(true);
@@ -494,6 +630,37 @@ export function ControllerPage() {
       showNotice(`DECISION RECORDED · ${confirm.decision} · Plan: ${confirm.planCode}`);
       advanceRef.current = true;
       setConfirm(null);
+      decisions.retry();
+      plans.retry();
+      validations.retry();
+    } catch (err) {
+      setActionError(apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitRejection = async () => {
+    if (!rejectTarget) return;
+    const reason = rejectReason.trim();
+    if (!reason) {
+      setRejectError("A rejection reason is required before the plan can be sent back to Planning.");
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    try {
+      await createOptimizationDecision({
+        block_plan_id: rejectTarget.planId,
+        decision: "REJECTED",
+        controller_code: "CONTROLLER",
+        remarks: reason,
+      });
+      showNotice(`REJECTED · ${rejectTarget.planCode} · moved to Rework queue for Planning review`);
+      advanceRef.current = true;
+      setRejectTarget(null);
+      setRejectReason("");
+      setRejectError(null);
       decisions.retry();
       plans.retry();
       validations.retry();
@@ -536,6 +703,18 @@ export function ControllerPage() {
       render: (row) => (
         <StatusBadge status={row.decision} tone={row.decision === "APPROVED" ? "success" : row.decision === "REJECTED" ? "danger" : "warning"} />
       ),
+    },
+    {
+      key: "remarks",
+      header: "Reason / remarks",
+      render: (row) =>
+        row.remarks ? (
+          <span className="block max-w-[20rem] truncate text-xs text-ink-muted" title={row.remarks}>
+            {row.remarks}
+          </span>
+        ) : (
+          <span className="text-xs text-ink-faint">—</span>
+        ),
     },
     {
       key: "decided_at",
@@ -606,12 +785,13 @@ export function ControllerPage() {
         </div>
       ) : null}
 
-      <div className="grid items-start gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
-        <section className="rounded-lg border border-line bg-surface-white shadow-card">
-          <div className="flex items-start justify-between gap-2 border-b border-line px-4 py-3">
-            <div>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(15rem,20rem)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-4">
+          <section className="min-w-0 rounded-lg border border-line bg-surface-white shadow-card">
+          <div className="flex flex-wrap items-start justify-between gap-2 border-b border-line px-4 py-3">
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <ListChecks className="size-4 text-ink-faint" aria-hidden="true" />
+                <ListChecks className="size-4 shrink-0 text-ink-faint" aria-hidden="true" />
                 <h2 className="text-xs font-bold uppercase tracking-widest text-ink">Pending recommendations</h2>
               </div>
               <p className="mt-1 text-2xs text-ink-muted">
@@ -620,7 +800,7 @@ export function ControllerPage() {
                   : `${awaiting.length} awaiting decision${awaiting.length === 1 ? "" : "s"}${remaining > 0 ? ` · Showing 1–${MAX_QUEUE_ITEMS}` : ""}`}
               </p>
             </div>
-            <span className="hidden shrink-0 rounded-md border border-line bg-surface-muted/50 px-2 py-1 text-2xs text-ink-faint sm:block">
+            <span className="hidden max-w-full shrink-0 rounded-md border border-line bg-surface-muted/50 px-2 py-1 text-2xs text-ink-faint sm:inline-flex sm:flex-wrap">
               PENDING <b className="tabular-nums text-ink">{awaiting.length}</b> · VALIDATED <b className="tabular-nums text-ink">{validatedCount}</b> · DECIDED TODAY <b className="tabular-nums text-ink">{decidedToday}</b>
             </span>
           </div>
@@ -664,9 +844,54 @@ export function ControllerPage() {
           </div>
         </section>
 
+        <section className="min-w-0 rounded-lg border border-amber-600/25 bg-surface-white shadow-card">
+          <div className="flex items-start justify-between gap-2 border-b border-line px-4 py-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Undo2 className="size-4 text-amber-600" aria-hidden="true" />
+                <h2 className="text-xs font-bold uppercase tracking-widest text-amber-700">Rework queue</h2>
+              </div>
+              <p className="mt-1 text-2xs text-ink-muted">
+                {isLoading
+                  ? "Loading…"
+                  : `${reworkPlans.length} rejected plan${reworkPlans.length === 1 ? "" : "s"} awaiting a revised recommendation from Planning`}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2 p-3">
+            {isLoading ? (
+              <LoadingState label="Loading rework queue…" />
+            ) : reworkPlans.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+                <CheckCircle2 className="size-8 text-success" aria-hidden="true" />
+                <p className="text-sm font-semibold uppercase tracking-wider text-ink">No plans in rework</p>
+                <p className="text-xs text-ink-muted">
+                  Rejected recommendations move here so Planning can review the rejection reason and re-submit.
+                </p>
+              </div>
+            ) : (
+              reworkPlans.map((summary) => (
+                <ReworkItem
+                  key={summary.plan.id}
+                  summary={summary}
+                  active={selected?.plan.id === summary.plan.id}
+                  taskType={taskTypeOf(summary)}
+                  onSelect={() => {
+                    dismissedRef.current = false;
+                    setSelectedId(summary.plan.id);
+                  }}
+                  disabled={offline}
+                />
+              ))
+            )}
+          </div>
+        </section>
+        </div>
+
         <div className="min-w-0">
           {selected ? (
-            <section className="space-y-4 rounded-lg border border-line bg-surface-white p-4 shadow-card sm:p-6">
+            <section className="min-w-0 space-y-4 rounded-lg border border-line bg-surface-white p-4 shadow-card sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
                 <div>
                   <p className="text-2xs font-semibold uppercase tracking-widest text-ink-faint">Recommendation</p>
@@ -693,14 +918,14 @@ export function ControllerPage() {
                 </button>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-lg border border-line bg-surface-muted/40 p-4">
+              <div className="grid items-stretch gap-4 md:grid-cols-2">
+                <div className="min-w-0 rounded-lg border border-line bg-surface-muted/40 p-4">
                   <div className="flex items-center gap-2">
-                    <Wrench className="size-4 text-ink-faint" aria-hidden="true" />
+                    <Wrench className="size-4 shrink-0 text-ink-faint" aria-hidden="true" />
                     <h3 className="text-xs font-semibold uppercase tracking-widest text-ink-faint">Why / What</h3>
                   </div>
                   <div className="mt-3 space-y-3 text-sm">
-                    <p className="text-ink">
+                    <p className="break-words text-ink">
                       {maintenanceRecordOf(selected)?.description ??
                         firstTaskOf(selected)?.planningTask?.description ??
                         selected.plan.description ??
@@ -709,7 +934,7 @@ export function ControllerPage() {
                     <dl className="grid gap-x-4 gap-y-2">
                       <LabeledField label="Maintenance">{taskTypeOf(selected)}</LabeledField>
                       <LabeledField label="Task" muted>
-                        <span className="font-mono">{firstTaskOf(selected)?.planningTask?.task_code ?? "—"}</span>
+                        <span className="break-all font-mono">{firstTaskOf(selected)?.planningTask?.task_code ?? "—"}</span>
                       </LabeledField>
                       <LabeledField label="Duration" muted>
                         <span className="tabular-nums">{selected.durationMinutes != null ? `${selected.durationMinutes} min` : "—"}</span>
@@ -718,9 +943,9 @@ export function ControllerPage() {
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-line bg-surface-muted/40 p-4">
+                <div className="min-w-0 rounded-lg border border-line bg-surface-muted/40 p-4">
                   <div className="flex items-center gap-2">
-                    <MapPin className="size-4 text-ink-faint" aria-hidden="true" />
+                    <MapPin className="size-4 shrink-0 text-ink-faint" aria-hidden="true" />
                     <h3 className="text-xs font-semibold uppercase tracking-widest text-ink-faint">Where</h3>
                   </div>
                   <dl className="mt-3 grid gap-x-4 gap-y-2 text-sm">
@@ -729,24 +954,24 @@ export function ControllerPage() {
                       <span className="mt-0.5 block text-xs text-ink-muted">{firstTaskOf(selected)?.location?.division_name ?? "—"}</span>
                     </LabeledField>
                     <LabeledField label="Line">
-                      <span className="font-mono">{selected.line ?? "—"}</span>
-                      <span className="mt-0.5 block text-xs text-ink-muted">{firstTaskOf(selected)?.line ?? "—"}</span>
+                      <span className="break-all font-mono">{selected.line ?? "—"}</span>
+                      <span className="mt-0.5 break-words text-xs text-ink-muted">{firstTaskOf(selected)?.line ?? "—"}</span>
                     </LabeledField>
                     <LabeledField label="Station">
                       {firstTaskOf(selected)?.location?.station_name ?? "—"}
-                      <span className="mt-0.5 block font-mono text-xs text-ink-muted">{selected.station ?? "—"}</span>
+                      <span className="mt-0.5 block break-all font-mono text-xs text-ink-muted">{selected.station ?? "—"}</span>
                     </LabeledField>
                     <LabeledField label="Asset">
                       {firstTaskOf(selected)?.asset?.asset_name ?? firstTaskOf(selected)?.asset?.asset_type ?? "—"}
-                      <span className="mt-0.5 block font-mono text-xs text-ink-muted">{firstTaskOf(selected)?.asset?.source_asset_id ?? "—"}</span>
+                      <span className="mt-0.5 block break-all font-mono text-xs text-ink-muted">{firstTaskOf(selected)?.asset?.source_asset_id ?? "—"}</span>
                     </LabeledField>
                   </dl>
                 </div>
               </div>
 
-              <div className="rounded-lg border border-line bg-surface-muted/40 p-4">
+              <div className="min-w-0 rounded-lg border border-line bg-surface-muted/40 p-4">
                 <div className="flex items-center gap-2">
-                  <Clock3 className="size-4 text-ink-faint" aria-hidden="true" />
+                  <Clock3 className="size-4 shrink-0 text-ink-faint" aria-hidden="true" />
                   <h3 className="text-xs font-semibold uppercase tracking-widest text-ink-faint">When — proposed block window</h3>
                 </div>
                 <div className="mt-3">
@@ -756,21 +981,35 @@ export function ControllerPage() {
                     const candidateId = task?.blockPlanTask.candidate_block_window_id ?? null;
                     const candidate = candidateId != null ? (task?.candidate ?? candidateById.get(candidateId) ?? null) : null;
                     const availableWindow = task?.availableWindow ?? null;
+                    const duration = selected.durationMinutes != null ? `${selected.durationMinutes} min` : null;
                     if (candidate) {
                       return (
-                        <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
-                          <Target className="size-3.5 text-success" aria-hidden="true" />
-                          <span className="font-semibold uppercase text-success">Window ✓ feasible</span>
-                          <span className="font-mono">candidate {candidate.id}</span>
-                          {availableWindow ? <span className="font-mono">· window {availableWindow.id} {availableWindow.window_status}</span> : null}
-                          <span className="font-mono">· {formatTime(candidate.candidate_start)} → {formatTime(candidate.candidate_end)}</span>
+                        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
+                          <span className="inline-flex items-center gap-1.5 font-semibold uppercase text-success">
+                            <Target className="size-3.5 shrink-0" aria-hidden="true" />
+                            Window ✓ feasible
+                          </span>
+                          <span className="break-all font-mono">candidate {candidate.id}</span>
+                          {availableWindow ? <span className="break-all font-mono">· window {availableWindow.id} {availableWindow.window_status}</span> : null}
+                          <span className="font-mono tabular-nums">· {formatTime(candidate.candidate_start)} → {formatTime(candidate.candidate_end)}</span>
+                          {duration ? <span className="font-mono tabular-nums">· duration {duration}</span> : null}
                         </p>
                       );
                     }
                     if (candidateId != null) {
-                      return <p className="mt-2 text-xs text-ink-faint">Window · candidate {candidateId} present but detail record not fetched.</p>;
+                      return (
+                        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-faint">
+                          <span className="break-all font-mono">Window · candidate {candidateId}</span>
+                          <span>present but detail record not fetched{duration ? <span className="font-mono"> · duration {duration}</span> : null}</span>
+                        </p>
+                      );
                     }
-                    return <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">Window · not available</p>;
+                    return (
+                      <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                        <span>Window · not available</span>
+                        {duration ? <span className="font-mono normal-case">· duration {duration}</span> : null}
+                      </p>
+                    );
                   })()}
                 </div>
                 <p className="mt-3 border-t border-line pt-2 text-2xs text-ink-muted">
@@ -778,11 +1017,11 @@ export function ControllerPage() {
                 </p>
               </div>
 
-              <div className="grid items-stretch gap-4 sm:grid-cols-2">
-                <div className="rounded-lg border border-line bg-surface-muted/40 p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <FileCheck2 className="size-4 text-ink-faint" aria-hidden="true" />
+              <div className="grid items-stretch gap-4 md:grid-cols-2">
+                <div className="min-w-0 rounded-lg border border-line bg-surface-muted/40 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <FileCheck2 className="size-4 shrink-0 text-ink-faint" aria-hidden="true" />
                       <h3 className="text-xs font-semibold uppercase tracking-widest text-ink-faint">Validation</h3>
                     </div>
                     {selected.validated ? (
@@ -802,12 +1041,12 @@ export function ControllerPage() {
                       </p>
                     ) : (
                       selected.validation.map((record) => (
-                        <div key={record.id} className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface-white px-3 py-1.5">
+                        <div key={record.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-md border border-line bg-surface-white px-3 py-1.5">
                           <div className="flex min-w-0 items-center gap-2">
                             <span className={record.validation_status === "PASSED" ? "text-success" : record.validation_status === "FAILED" ? "text-danger" : "text-amber-600"}>
                               {record.validation_status === "PASSED" ? "✓" : record.validation_status === "FAILED" ? "✗" : "•"}
                             </span>
-                            <span className="truncate text-xs font-medium text-ink">{record.validation_type.replace(/_/g, " ")}</span>
+                            <span className="min-w-0 break-words text-xs font-medium text-ink">{record.validation_type.replace(/_/g, " ")}</span>
                           </div>
                           <StatusBadge status={record.validation_status} tone={record.validation_status === "PASSED" ? "success" : record.validation_status === "FAILED" ? "danger" : "warning"} />
                         </div>
@@ -821,10 +1060,10 @@ export function ControllerPage() {
                   </p>
                 </div>
 
-                <div className="rounded-lg border border-line bg-surface-muted/40 p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <TrainFront className="size-4 text-ink-faint" aria-hidden="true" />
+                <div className="min-w-0 rounded-lg border border-line bg-surface-muted/40 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <TrainFront className="size-4 shrink-0 text-ink-faint" aria-hidden="true" />
                       <h3 className="text-xs font-semibold uppercase tracking-widest text-ink-faint">Train impact</h3>
                     </div>
                     {selected.impactStatus === "CLEAR" ? (
@@ -852,17 +1091,19 @@ export function ControllerPage() {
                       </p>
                     ) : (
                       selected.impact.map((row) => (
-                        <div key={row.key} className="rounded-md border border-danger/25 bg-danger-light/40 px-3 py-1.5">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="flex items-center gap-2 text-xs font-medium text-ink">
-                              <Clock3 className="size-3.5 text-ink-faint" aria-hidden="true" />
-                              {row.kind === "OCCUPANCY" ? "Line occupancy" : "Schedule"} · {row.trainIdLabel}
-                              {row.line ? <span className="font-mono text-ink-muted">{row.line}</span> : null}
-                              {row.station ? <span className="font-mono text-ink-muted">{row.station}</span> : null}
+                        <div key={row.key} className="min-w-0 rounded-md border border-danger/25 bg-danger-light/40 px-3 py-1.5">
+                          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                            <span className="flex min-w-0 items-center gap-2 text-xs font-medium text-ink">
+                              <Clock3 className="size-3.5 shrink-0 text-ink-faint" aria-hidden="true" />
+                              <span className="min-w-0 break-words">
+                                {row.kind === "OCCUPANCY" ? "Line occupancy" : "Schedule"} · {row.trainIdLabel}
+                              </span>
+                              {row.line ? <span className="break-all font-mono text-ink-muted">{row.line}</span> : null}
+                              {row.station ? <span className="break-all font-mono text-ink-muted">{row.station}</span> : null}
                             </span>
                             <StatusBadge status={row.conflict ? "CONFLICT" : "CLEAR"} tone={row.conflict ? "danger" : "success"} />
                           </div>
-                          <p className="mt-0.5 truncate text-2xs text-ink-muted">{row.reason}</p>
+                          <p className="mt-0.5 break-words text-2xs text-ink-muted">{row.reason}</p>
                         </div>
                       ))
                     )}
@@ -875,11 +1116,44 @@ export function ControllerPage() {
 
               <LineageSection summary={selected} maintenanceRecord={maintenanceRecordOf(selected)} candidateById={candidateById} />
 
+              {selected.plan.status === REWORK_STATUS ? (
+                <div className="rounded-lg border border-amber-600/30 bg-amber-600/[0.06] p-4">
+                  <div className="flex items-center gap-2">
+                    <Undo2 className="size-4 text-amber-600" aria-hidden="true" />
+                    <h3 className="text-xs font-semibold uppercase tracking-widest text-amber-700">Returned to Planning — rework required</h3>
+                  </div>
+                  <p className="mt-2 text-sm text-ink">
+                    The Controller rejected this recommendation. Review the rejection reason below, then generate a revised
+                    recommendation from the Rework queue in the Planning workspace. The revised plan keeps this history linked via{" "}
+                    <span className="font-mono">revises_plan_id</span>.
+                  </p>
+                  {rejectionOf(selected) ? (
+                    <dl className="mt-3 grid gap-x-4 gap-y-2 sm:grid-cols-2">
+                      <LabeledField label="Rejection reason">
+                        <span className="normal-case">{rejectionOf(selected)?.remarks ?? "—"}</span>
+                      </LabeledField>
+                      <LabeledField label="Decided at" muted>
+                        <span className="tabular-nums">{formatDateTime(rejectionOf(selected)?.decided_at)}</span>
+                      </LabeledField>
+                    </dl>
+                  ) : null}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 font-medium"
+                    onClick={() => navigate(`/rework?plan=${selected.plan.id}`)}
+                    title="Open the rejection in the Planning rework queue"
+                  >
+                    <Undo2 /> Revise in Planning
+                  </Button>
+                </div>
+              ) : null}
+
               <div>
                 <p className="text-2xs text-ink-muted">
                   Review the proposed maintenance block, validation and operational impact before recording your decision.
                 </p>
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -913,9 +1187,13 @@ export function ControllerPage() {
                     variant="danger"
                     size="sm"
                     className={ACTION_BUTTON}
-                    onClick={() => setConfirm({ planId: selected.plan.id, planCode: selected.plan.plan_code, decision: "REJECTED" })}
-                    disabled={offline || busy || selected.plan.status === "REJECTED"}
-                    title="Records a REJECTED controller decision through the backend"
+                    onClick={() => {
+                      setRejectError(null);
+                      setRejectReason("");
+                      setRejectTarget({ planId: selected.plan.id, planCode: selected.plan.plan_code });
+                    }}
+                    disabled={offline || busy || selected.plan.status === "REJECTED" || selected.plan.status === REWORK_STATUS}
+                    title="Records a REJECTED controller decision — a rejection reason is required and the plan moves to the Rework queue"
                   >
                     <XCircle /> Reject
                   </Button>
@@ -967,11 +1245,28 @@ export function ControllerPage() {
         onOpenChange={(open) => !open && !busy && setConfirm(null)}
         title={confirm ? CONFIRM_TITLES[confirm.decision] : ""}
         description={confirm ? `${confirm.planCode} · ${CONFIRM_COPY[confirm.decision]}` : undefined}
-        confirmLabel={confirm ? (confirm.decision === "APPROVED" ? "Approve" : "Reject") : "Confirm"}
-        intent={confirm?.decision === "APPROVED" ? "success" : "danger"}
-        icon={confirm?.decision === "APPROVED" ? CheckCircle2 : XCircle}
+        confirmLabel="Approve"
+        intent="success"
+        icon={CheckCircle2}
         busy={busy}
         onConfirm={recordDecision}
+      />
+
+      <RejectReasonDialog
+        open={rejectTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) {
+            setRejectTarget(null);
+            setRejectReason("");
+            setRejectError(null);
+          }
+        }}
+        planCode={rejectTarget?.planCode ?? ""}
+        reason={rejectReason}
+        onReasonChange={setRejectReason}
+        error={rejectError}
+        busy={busy}
+        onConfirm={submitRejection}
       />
     </div>
   );

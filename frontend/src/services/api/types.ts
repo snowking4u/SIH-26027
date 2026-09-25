@@ -575,6 +575,7 @@ export interface OptimizationOutput {
 export interface BlockPlan {
   id: number;
   optimization_run_id: number | null;
+  revises_plan_id: number | null;
   plan_code: string;
   plan_date: string;
   status:
@@ -584,6 +585,7 @@ export interface BlockPlan {
     | "SUBMITTED"
     | "APPROVED"
     | "REJECTED"
+    | "REWORK_REQUIRED"
     | "EXECUTED"
     | "CANCELLED";
   planning_horizon_start: string;
@@ -595,12 +597,19 @@ export interface BlockPlan {
 
 export interface BlockPlanCreate {
   optimization_run_id?: number | null;
+  revises_plan_id?: number | null;
   plan_code: string;
   plan_date: string;
   status: BlockPlan["status"];
   planning_horizon_start: string;
   planning_horizon_end: string;
   description?: string | null;
+}
+
+/** POST /api/optimization/plans/{id}/revise — planning-side rework action. */
+export interface PlanReviseRequest {
+  description?: string | null;
+  candidate_block_window_id?: number | null;
 }
 
 export interface BlockPlanTask {

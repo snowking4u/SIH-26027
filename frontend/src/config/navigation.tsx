@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Target,
   TrainFront,
+  Undo2,
   Wrench,
   Zap,
 } from "lucide-react";
@@ -111,6 +112,12 @@ export const NAV_GROUPS: NavGroup[] = [
         path: "/block-plans",
         icon: CalendarClock,
         description: "Persisted block-plan proposals",
+      },
+      {
+        label: "Rework",
+        path: "/rework",
+        icon: Undo2,
+        description: "Controller-rejected plans awaiting revised recommendations",
       },
       {
         label: "Train Impact",

@@ -11,6 +11,7 @@ import type {
   OptimizationOutput,
   OptimizationRun,
   OptimizationValidation,
+  PlanReviseRequest,
 } from "@/services/api/types";
 import { toList } from "@/services/api/types";
 
@@ -22,6 +23,14 @@ export async function fetchOptimizationPlans(params?: ListParams): Promise<Block
 /** POST /api/optimization/plans — create a block plan (persists; real mutation). */
 export async function createOptimizationPlan(body: BlockPlanCreate): Promise<BlockPlan> {
   return apiPost<BlockPlan>("/api/optimization/plans", body);
+}
+
+/** POST /api/optimization/plans/{id}/revise — generate a revised recommendation after a controller rejection. */
+export async function reviseOptimizationPlan(
+  planId: number,
+  body: PlanReviseRequest = {},
+): Promise<BlockPlan> {
+  return apiPost<BlockPlan>(`/api/optimization/plans/${planId}/revise`, body);
 }
 
 /** GET /api/optimization/plan-tasks — tasks attached to block plans. */

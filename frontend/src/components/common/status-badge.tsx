@@ -43,7 +43,7 @@ export function statusTone(status: string | null | undefined): StatusTone {
     return "success";
   }
   if (
-    ["PENDING", "PLANNED", "REVIEW", "REQUIRES_REVIEW", "CANDIDATE", "IN_PROGRESS", "SCHEDULED", "SUBMITTED", "MODIFIED", "UPDATED", "DRAFT", "AVAILABLE", "RESTRICTED"].includes(value)
+    ["PENDING", "PLANNED", "REVIEW", "REQUIRES_REVIEW", "CANDIDATE", "IN_PROGRESS", "SCHEDULED", "SUBMITTED", "MODIFIED", "UPDATED", "DRAFT", "AVAILABLE", "RESTRICTED", "REWORK_REQUIRED", "RETURNED_FOR_REVISION"].includes(value)
   ) {
     return "warning";
   }

@@ -30,6 +30,9 @@ const TrainImpactPage = lazy(() =>
 const ControllerPage = lazy(() =>
   import("@/pages/controller/controller-page").then((module) => ({ default: module.ControllerPage })),
 );
+const ReworkPage = lazy(() =>
+  import("@/pages/rework/rework-page").then((module) => ({ default: module.ReworkPage })),
+);
 const DepartmentsPage = lazy(() =>
   import("@/pages/departments/departments-page").then((module) => ({ default: module.DepartmentsPage })),
 );
@@ -77,6 +80,7 @@ export function App() {
         <Route element={<AppLayout />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/controller" element={<ControllerPage />} />
+          <Route path="/rework" element={<ReworkPage />} />
           <Route path="/live-map" element={<LiveMapPage />} />
           <Route path="/maintenance" element={<MaintenancePage />} />
           <Route path="/block-requests" element={<BlockRequestsPage />} />
