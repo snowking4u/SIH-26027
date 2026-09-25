@@ -34,7 +34,7 @@ def list_candidate_windows(
     feasible: bool | None = None,
     feasibility_status: str | None = None,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 100000,
     db: Session = Depends(get_db),
 ):
     statement = select(CandidateBlockWindow).order_by(CandidateBlockWindow.id)
