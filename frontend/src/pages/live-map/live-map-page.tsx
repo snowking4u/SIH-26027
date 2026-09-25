@@ -508,7 +508,7 @@ function CorridorCanvas({
   });
 
   return (
-    <div className="relative w-full overflow-x-auto pb-1" style={{ height: 470, minWidth: Math.max(1200, junctions.length * 150) }}>
+    <div className="relative w-full overflow-x-auto pb-1" style={{ height: 470, minWidth: Math.max(1600, junctions.length * 180) }}>
       {/* rail bed */}
       {junctions.length > 0 ? (
         <>
