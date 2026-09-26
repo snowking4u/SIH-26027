@@ -67,6 +67,7 @@ from app.services.synthetic_data import (
     run_pipeline,
     verify_synthetic,
 )
+from app.services.synthetic_data import rail_reference
 from app.services.synthetic_data.random_utils import day_start
 from app.services.synthetic_data.master_generator import (
     line_number,
@@ -149,9 +150,12 @@ def test_unknown_scale_and_scenario_rejected():
 
 def test_scale_profile_targets():
     cfg = tiny_cfg()
-    assert cfg.station_count == SCALE_PROFILES["tiny"].stations
+    # Stations and trains now come from the real Agra Division reference
+    # topology, so they are fixed rather than scale-derived.
+    assert cfg.station_count == len(rail_reference.REFERENCE_STATION_CODES)
+    assert cfg.train_count == len(rail_reference.TRAINS)
+    assert cfg.line_count == len(rail_reference.LOCATIONS)
     assert cfg.asset_count == 10
-    assert cfg.train_count == 10
     assert cfg.inspection_count == 30
     assert cfg.defect_count == 10
     assert cfg.maintenance_count == 10
@@ -223,7 +227,7 @@ def test_different_seed_changes_source_data():
 def test_master_locations_assets_parameters(seeded: Session):
     manifest = run_tiny(seeded)
     cfg = tiny_cfg()
-    combos = cfg.station_count * cfg.profile.lines_per_station
+    combos = cfg.line_count
     assert manifest["master_stats"]["locations"] == combos
     assert seeded.scalar(select(func.count()).select_from(LocationMaster)) == combos
     assert manifest["master_stats"]["assets"] == cfg.asset_count
@@ -235,9 +239,38 @@ def test_master_locations_assets_parameters(seeded: Session):
     assert all(isinstance(p.recorded_date, datetime) for p in params)
 
 
+def test_master_locations_use_real_agra_division_reference(seeded: Session):
+    """Locations must carry real NCR/AGC topology, not SYN-* placeholders."""
+    run_tiny(seeded)
+    rows = seeded.scalars(select(LocationMaster)).all()
+    assert rows
+    for row in rows:
+        assert row.zone_code == rail_reference.ZONE_CODE
+        assert row.zone_name == rail_reference.ZONE_NAME
+        assert row.division_code == rail_reference.DIVISION_CODE
+        assert row.division_name == rail_reference.DIVISION_NAME
+        assert row.station_code in rail_reference.REFERENCE_STATION_CODES
+        assert row.line_code in rail_reference.REFERENCE_LINE_CODES
+        assert row.section_name == rail_reference.SECTION_NAMES[row.section_code]
+        assert row.line_name == rail_reference.LINE_NAMES[row.line_code]
+        assert row.km_start < row.km_end
+        assert not row.station_name.lower().startswith("synthetic")
+    # The Live Map needs coordinates, so at least the main corridor must plot.
+    mappable = {loc.station_code for loc in rail_reference.locations_with_coordinates()}
+    plotted = {
+        r.station_code for r in rows
+        if r.latitude is not None and r.longitude is not None
+    }
+    assert mappable and mappable <= plotted
+    # Every generator-owned combo matches the reference exactly.
+    assert {
+        (r.station_code, r.line_code) for r in rows
+    } == set(rail_reference.station_line_combos())
+
+
 def test_coa_trains_schedules_movements_occupancy_events(seeded: Session):
     cfg = tiny_cfg()
-    combos = cfg.station_count * cfg.profile.lines_per_station
+    combos = cfg.line_count
     run_tiny(seeded)
     assert seeded.scalar(select(func.count()).select_from(Train)) == cfg.train_count
     assert (
@@ -257,8 +290,31 @@ def test_coa_trains_schedules_movements_occupancy_events(seeded: Session):
         seeded.scalar(select(func.count()).select_from(OperationalEvent))
         == cfg.train_count * min(3, cfg.days)
     )
-    trains = seeded.scalars(select(Train.train_id)).all()
-    assert all(t.startswith("SYN-TRAIN-") for t in trains)
+    train_ids = set(seeded.scalars(select(Train.train_id)).all())
+    assert train_ids == set(rail_reference.REFERENCE_TRAIN_IDS)
+
+
+def test_coa_trains_carry_real_service_identity(seeded: Session):
+    """Train rows must expose real service numbers, names, locos, directions."""
+    run_tiny(seeded)
+    trains = {t.train_id: t for t in seeded.scalars(select(Train)).all()}
+    assert len(trains) == len(rail_reference.TRAINS)
+    for ref in rail_reference.TRAINS:
+        row = trains[ref.train_id]
+        assert row.train_number == ref.train_number
+        assert row.train_name == ref.train_name
+        assert row.direction == ref.direction
+        assert row.direction in {"UP", "DOWN"}
+        assert row.start_date is not None
+        assert row.schedule_date is not None
+    # At least one freight rake is deliberately left without a loco so the
+    # "not yet shedded" branch of the Train Impact view stays exercised.
+    assert any(t.loco_number is None for t in trains.values())
+    assert any(t.loco_number for t in trains.values())
+    # Loco numbers must look like real Indian Railways classes, not SYN-LOCO-n.
+    for row in trains.values():
+        if row.loco_number:
+            assert row.loco_number.split("-")[0] in rail_reference.LOCO_POOL
 
 
 def test_schedule_and_occupancy_intervals_are_well_formed(seeded: Session):
@@ -286,7 +342,7 @@ def test_available_windows_derived_by_service(seeded: Session):
     run_tiny(seeded)
     windows = seeded.scalars(select(AvailableWindow)).all()
     gaps = len(cfg.window_template()) - 1
-    combos = cfg.station_count * cfg.profile.lines_per_station
+    combos = cfg.line_count
     assert len(windows) == combos * cfg.days * gaps
     assert all(w.window_status == "AVAILABLE" for w in windows)
     assert all(w.window_start < w.window_end for w in windows)

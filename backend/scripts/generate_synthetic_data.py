@@ -76,7 +76,7 @@ def check_alembic_head(script_location: Optional[Path] = None) -> None:
 
 def estimate(config: SyntheticConfig) -> dict:
     """Pure volume estimate used by --dry-run (no DB reads)."""
-    combos = config.station_count * config.profile.lines_per_station
+    combos = config.line_count
     template = config.window_template()
     gaps_per_day = max(0, len(template) - 1)
     windows = combos * config.days * gaps_per_day

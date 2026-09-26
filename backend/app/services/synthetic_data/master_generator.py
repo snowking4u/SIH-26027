@@ -20,6 +20,7 @@ from app.models.location import LocationMaster
 from app.models.source_system import SourceSystem
 
 from . import random_utils as ru
+from . import rail_reference as rr
 from .config import MARKER, SyntheticConfig
 
 ASSET_TYPES = [
@@ -32,13 +33,19 @@ ASSET_TYPES = [
     "POINT_MACHINE",
 ]
 
-ZONE_NAMES = [
-    "SYNTHETIC NORTHERN ZONE",
-    "SYNTHETIC SOUTHERN ZONE",
-    "SYNTHETIC EASTERN ZONE",
-]
-
 STATUSES = ["IN_SERVICE", "IN_SERVICE", "IN_SERVICE", "UNDER_MAINTENANCE"]
+
+# Realistic per-type asset naming so Asset Master reads like a railway
+# register rather than "Synthetic track 3".
+ASSET_TYPE_LABEL = {
+    "TRACK": "Track",
+    "SIGNAL": "Signal",
+    "OCS": "Overhead Contact System",
+    "BRIDGE": "Bridge",
+    "LEVEL_CROSSING": "Level Crossing",
+    "TRACK_CIRCUIT": "Track Circuit",
+    "POINT_MACHINE": "Point Machine",
+}
 
 PARAMETER_POOL = [
     ("RAIL_WEAR_MM", "Rail head wear", "mm"),
@@ -63,12 +70,11 @@ class AssetInfo:
     status: str
 
 
-def station_code(station_idx: int) -> str:
-    return f"SYN-ST{station_idx + 1:03d}"
-
-
-def line_number(station_idx: int, line_idx: int) -> str:
-    return f"SYN-L{station_idx * 10 + line_idx + 1:03d}"
+# Station/line resolution now comes from the real Agra Division reference
+# topology. These names are re-exported because sibling generators
+# (``coa_generator``) import them from this module.
+station_code = rr.station_code
+line_number = rr.line_number
 
 
 def asset_id(n: int) -> str:
@@ -89,42 +95,40 @@ class MasterGenerator:
     # Locations
     # ------------------------------------------------------------------ #
     def generate_locations(self) -> list[LocationMaster]:
-        cfg = self.cfg
-        locations: list[LocationMaster] = []
-        rng = self.rng
-        for station in range(cfg.station_count):
-            zone_name = ZONE_NAMES[station % len(ZONE_NAMES)]
-            zone_code = f"SYN-ZONE-{station % len(ZONE_NAMES) + 1}"
-            division_code = f"SYN-DIV-{station + 1}"
-            section_code = f"SYN-SEC-{station + 1}"
-            for line in range(cfg.profile.lines_per_station):
-                km_start = ru.int_between(rng, 0, 120)
-                locations.append(
-                    LocationMaster(
-                        zone_code=zone_code,
-                        zone_name=f"{zone_name} (STEP 11 SYNTHETIC)",
-                        division_code=division_code,
-                        division_name=f"Synthetic Division {station + 1}",
-                        section_code=section_code,
-                        section_name=f"Synthetic Section {station + 1}",
-                        station_code=station_code(station),
-                        station_name=f"Synthetic Station {station + 1:03d}",
-                        line_code=line_number(station, line),
-                        line_name=f"Synthetic Line {line + 1}",
-                        km_start=km_start,
-                        km_end=km_start + ru.int_between(rng, 20, 60),
-                        latitude=20.0 + station * 0.1,
-                        longitude=71.0 + line * 0.1,
-                    )
-                )
-        existing = set(
-            self.db.scalars(
-                select(LocationMaster.station_code).where(
-                    LocationMaster.station_code.like("SYN-ST%")
-                )
+        """Materialise the real Agra Division station/line topology.
+
+        ``location_master`` has no remarks column, so idempotency is enforced
+        on the ``(station_code, line_code)`` pair, which is the natural key of
+        the table. Re-running skips pairs that already exist.
+        """
+        existing_pairs = {
+            (station, line)
+            for station, line in self.db.execute(
+                select(LocationMaster.station_code, LocationMaster.line_code)
             ).all()
-        )
-        fresh = [loc for loc in locations if loc.station_code not in existing]
+        }
+        fresh: list[LocationMaster] = []
+        for ref in rr.LOCATIONS:
+            if (ref.station_code, ref.line_code) in existing_pairs:
+                continue
+            fresh.append(
+                LocationMaster(
+                    zone_code=rr.ZONE_CODE,
+                    zone_name=rr.ZONE_NAME,
+                    division_code=rr.DIVISION_CODE,
+                    division_name=rr.DIVISION_NAME,
+                    section_code=ref.section_code,
+                    section_name=ref.section_name,
+                    station_code=ref.station_code,
+                    station_name=ref.station_name,
+                    line_code=ref.line_code,
+                    line_name=ref.line_name,
+                    km_start=ref.km_start,
+                    km_end=ref.km_end,
+                    latitude=ref.latitude,
+                    longitude=ref.longitude,
+                )
+            )
         if fresh:
             self.db.add_all(fresh)
             self.db.flush()
@@ -145,6 +149,23 @@ class MasterGenerator:
             ).all()
         }
 
+        # Resolve (station, line) -> location id from the database rather than
+        # indexing the freshly-inserted list. The fresh list omits rows that
+        # already existed from an earlier run, so positional indexing would
+        # attach assets to the wrong location on re-runs.
+        location_ids = {
+            (station, line): loc_id
+            for station, line, loc_id in self.db.execute(
+                select(
+                    LocationMaster.station_code,
+                    LocationMaster.line_code,
+                    LocationMaster.id,
+                )
+            ).all()
+        }
+        combos = rr.station_line_combos()
+        oos_types = [t for t in ASSET_TYPES if t != "OCS"]
+
         infos: list[AssetInfo] = []
         rows: list[AssetMaster] = []
         meta: list[tuple] = []
@@ -155,11 +176,11 @@ class MasterGenerator:
             if (source.id, sid) in existing:
                 count += 1
                 continue
-            station = n % cfg.station_count
-            line = (n // cfg.station_count) % cfg.profile.lines_per_station
-            scode = station_code(station)
-            lcode = line_number(station, line)
-            raw_type = ASSET_TYPES[n % len(ASSET_TYPES)]
+            station_idx, line_idx, scode, lcode = rr.combo_indices(n % len(combos))
+            # The goods loop siding is not electrified, so OCS assets are only
+            # placed on the running lines.
+            type_pool = oos_types if lcode == "3RD-LINE" else ASSET_TYPES
+            raw_type = type_pool[n % len(type_pool)]
             ins_date = ru.datetime_between(
                 self.rng,
                 datetime(cfg.start_date.year - 20, 1, 1),
@@ -167,28 +188,39 @@ class MasterGenerator:
                 minute_step=1440,
             ).date()
             status = STATUSES[n % len(STATUSES)]
+            km = self._station_km(scode, lcode)
             asset = AssetMaster(
                 source_system_id=source.id,
                 source_asset_id=sid,
                 asset_type=raw_type,
-                asset_subtype=f"{raw_type}-MODEL-{n % 5}",
-                asset_name=f"Synthetic {raw_type.lower().replace('_', ' ')} {n + 1}",
-                location_id=locations[n % len(locations)].id,
+                asset_subtype=f"{raw_type}-STD",
+                asset_name=(
+                    f"{rr.station_name_for(scode)} {ASSET_TYPE_LABEL[raw_type]} "
+                    f"{raw_type[:2]}-{n + 1:03d} (KM {km})"
+                ),
+                location_id=location_ids.get((scode, lcode)),
                 installation_date=ins_date,
                 status=status,
                 remarks=(
-                    f"{MARKER} Synthetic master asset; source={source.system_code} "
+                    f"{MARKER} Master asset; source={source.system_code} "
                     f"station={scode} line={lcode}."
                 ),
             )
             rows.append(asset)
-            meta.append((station, line, raw_type, source.system_code, ins_date, status))
+            meta.append((station_idx, line_idx, raw_type, source.system_code, ins_date, status))
             count += 1
             if count % cfg.batch_size == 0:
                 infos.extend(self._flush_asset_batch(rows, meta))
         if rows:
             infos.extend(self._flush_asset_batch(rows, meta))
         return infos
+
+    def _station_km(self, station_code: str, line_code: str) -> str:
+        """Kilometre label for an asset name, from the reference topology."""
+        for ref in rr.LOCATIONS:
+            if ref.station_code == station_code and ref.line_code == line_code:
+                return f"{ref.km_midpoint:.1f}"
+        return "-"
 
     def _flush_asset_batch(
         self, rows: list[AssetMaster], meta: list[tuple]

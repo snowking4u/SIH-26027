@@ -116,6 +116,32 @@ def validate_block_plan(db: Session, block_plan_id: int) -> list[dict]:
                 _result("DURATION", PASSED, "PLANNED_DURATION_VALID")
             )
 
+        # Verify planned duration meets the task's required duration
+        required_duration = None
+        if planning_task is not None:
+            if planning_task.duration_minutes is not None and planning_task.duration_minutes > 0:
+                required_duration = planning_task.duration_minutes
+            elif block is not None and block.required_duration_minutes is not None and block.required_duration_minutes > 0:
+                required_duration = block.required_duration_minutes
+
+        if required_duration is not None:
+            if plan_task.planned_duration_minutes < required_duration:
+                results.append(
+                    _result(
+                        "DURATION",
+                        FAILED,
+                        f"PLANNED_DURATION_INSUFFICIENT:{planning_task.id}:{plan_task.planned_duration_minutes}min<{required_duration}min",
+                    )
+                )
+            else:
+                results.append(
+                    _result(
+                        "DURATION",
+                        PASSED,
+                        f"PLANNED_DURATION_SUFFICIENT:{planning_task.id}:{plan_task.planned_duration_minutes}min>={required_duration}min",
+                    )
+                )
+
         if planning_task is None:
             results.append(
                 _result(

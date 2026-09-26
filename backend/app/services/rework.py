@@ -13,6 +13,7 @@ proposal, or — when the planner supplies an alternative feasible candidate
 window — adopts that candidate window's own authoritative start/end/duration.
 """
 
+from datetime import timedelta
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,6 +22,7 @@ from app.models.block_plan import BlockPlan
 from app.models.block_plan_task import BlockPlanTask
 from app.models.candidate_block_window import CandidateBlockWindow
 from app.models.controller_decision import ControllerDecision
+from app.models.planning_task import PlanningTask
 from app.schemas.block_plan import REWORK_REQUIRED
 from app.services.plan_validation import store_plan_validations
 
@@ -99,6 +101,16 @@ def revise_block_plan(
         .order_by(BlockPlanTask.id)
     ).all()
 
+    planning_task_ids = [pt.planning_task_id for pt in plan_tasks]
+    planning_tasks = {}
+    if planning_task_ids:
+        planning_tasks = {
+            pt.id: pt
+            for pt in db.scalars(
+                select(PlanningTask).where(PlanningTask.id.in_(planning_task_ids))
+            ).all()
+        }
+
     alternate: CandidateBlockWindow | None = None
     if candidate_block_window_id is not None:
         alternate = db.get(CandidateBlockWindow, candidate_block_window_id)
@@ -163,15 +175,33 @@ def revise_block_plan(
     db.flush()
 
     for task in plan_tasks:
+        planning_task = planning_tasks.get(task.planning_task_id)
+        block = planning_task.block_requirement if planning_task else None
+
+        # Determine the required duration from the planning task or block requirement
+        required_duration = None
+        if planning_task is not None:
+            if planning_task.duration_minutes is not None and planning_task.duration_minutes > 0:
+                required_duration = planning_task.duration_minutes
+            elif block is not None and block.required_duration_minutes is not None and block.required_duration_minutes > 0:
+                required_duration = block.required_duration_minutes
+
         if alternate is not None:
             planned_start = alternate.candidate_start
             planned_end = alternate.candidate_end
             planned_duration = alternate.candidate_duration_minutes
             candidate_id = alternate.id
         else:
+            # When cloning without an alternate, use the required duration to compute
+            # the planned interval from the original start time. This prevents
+            # propagating a possibly incorrect duration from the rejected plan.
             planned_start = task.planned_start
-            planned_end = task.planned_end
-            planned_duration = task.planned_duration_minutes
+            if required_duration is not None:
+                planned_duration = required_duration
+                planned_end = planned_start + timedelta(minutes=required_duration)
+            else:
+                planned_duration = task.planned_duration_minutes
+                planned_end = task.planned_end
             candidate_id = task.candidate_block_window_id
         db.add(
             BlockPlanTask(

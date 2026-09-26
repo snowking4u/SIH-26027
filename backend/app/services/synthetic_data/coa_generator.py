@@ -24,8 +24,9 @@ from app.models.train_movement import TrainMovement
 from app.models.train_schedule import TrainSchedule
 
 from . import random_utils as ru
+from . import rail_reference as rr
 from .config import MARKER, SyntheticConfig
-from .master_generator import line_number, station_code
+from .master_generator import line_number, station_code  # noqa: F401  (re-export)
 
 
 @dataclass(frozen=True)
@@ -63,12 +64,7 @@ class CoaGenerator:
     # Core generation
     # ------------------------------------------------------------------ #
     def generate(self) -> CoaData:
-        combos: list[tuple[str, str]] = []
-        for station in range(self.cfg.station_count):
-            for line in range(self.cfg.profile.lines_per_station):
-                combos.append(
-                    (station_code(station), line_number(station, line))
-                )
+        combos: list[tuple[str, str]] = list(rr.station_line_combos())
 
         day_offsets = range(self.cfg.days)
 
@@ -124,9 +120,16 @@ class CoaGenerator:
     def _map_trains_to_combos(
         self, trains: list[Train], combos: list[tuple[str, str]]
     ) -> dict[tuple[str, str], list[Train]]:
+        """Assign at least one service to every station/line combo.
+
+        A real service traverses several stations on its run, so a train may
+        legitimately appear against more than one combo. Every combo is
+        guaranteed a train, otherwise its ``train_schedule`` rows would be
+        skipped and the Train Impact view would silently lose that line.
+        """
         mapping: dict[tuple[str, str], list[Train]] = {}
-        for n, train in enumerate(trains):
-            mapping.setdefault(combos[n % len(combos)], []).append(train)
+        for idx, combo in enumerate(combos):
+            mapping[combo] = [trains[idx % len(trains)]]
         return mapping
 
     # ------------------------------------------------------------------ #
@@ -168,38 +171,51 @@ class CoaGenerator:
     # Datasets
     # ------------------------------------------------------------------ #
     def _generate_trains(self, combos: list[tuple[str, str]]) -> list[Train]:
+        """Materialise the real train roster for the corridor.
+
+        One ``train`` row per real service. The roster is a closed list, so
+        this is naturally idempotent on ``train_id``; a re-run updates nothing
+        and inserts nothing.
+
+        ``schedule_date`` carries the timetable issue timestamp (05:30 on the
+        first day of the window) and ``start_date`` the service's actual
+        departure from its origin, which is how the prototype distinguishes
+        the two concepts on screen.
+        """
         cfg = self.cfg
         source = self._source_system()
+        roster = rr.TRAINS
         existing = {
             t.train_id: t
             for t in self.db.scalars(
                 select(Train).where(
                     Train.source_system_id == source.id,
-                    Train.train_id.startswith("SYN-TRAIN-"),
+                    Train.train_id.in_(rr.REFERENCE_TRAIN_IDS),
                 )
             ).all()
         }
+        day_zero = ru.day_start(cfg.start_date, 0)
+        schedule_issued = day_zero.replace(hour=5, minute=30)
+
         trains: list[Train] = []
         rows: list[Train] = []
-        count = 0
-        for n in range(cfg.train_count):
-            train_id = f"SYN-TRAIN-{n + 1:06d}"
-            train = existing.get(train_id)
+        for n, ref in enumerate(roster):
+            train = existing.get(ref.train_id)
             if train is None:
+                hour, minute = (int(x) for x in ref.start_time.split(":"))
                 train = Train(
-                    train_id=train_id,
-                    train_number=f"SYN{n + 1:04d}",
-                    train_name=f"Synthetic Train {n + 1}",
-                    schedule_date=cfg.start_date,
-                    start_date=ru.day_start(cfg.start_date, 0),
-                    loco_number=f"SYN-LOCO-{n % 50 + 1}",
-                    direction="UP" if n % 2 == 0 else "DOWN",
+                    train_id=ref.train_id,
+                    train_number=ref.train_number,
+                    train_name=ref.train_name,
+                    schedule_date=schedule_issued,
+                    start_date=day_zero.replace(hour=hour, minute=minute),
+                    loco_number=rr.loco_number(ref, n),
+                    direction=ref.direction,
                     source_system_id=source.id,
                 )
                 rows.append(train)
             trains.append(train)
-            count += 1
-            if count % cfg.batch_size == 0 and rows:
+            if len(rows) >= cfg.batch_size:
                 self.db.add_all(rows)
                 rows.clear()
                 self.db.flush()

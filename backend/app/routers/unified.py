@@ -133,7 +133,7 @@ def list_block_requirements(
     line_number: str | None = None,
     status: str | None = None,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 100000,
     db: Session = Depends(get_db),
 ):
     statement = select(BlockRequirement).order_by(BlockRequirement.id)

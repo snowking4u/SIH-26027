@@ -11,7 +11,7 @@ import {
   Target,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { cn } from "@/utils/cn";
 import { DataTable, type DataTableColumn } from "@/components/common/data-table";
@@ -28,11 +28,30 @@ import {
 } from "@/hooks/useDepartmentData";
 import type {
   Asset,
+  Location,
   PlanningTask,
   UnifiedBlockRequirement,
   UnifiedDefect,
   UnifiedMaintenance,
 } from "@/services/api/types";
+import {
+  createTdmsFailure,
+  createTdmsInspection,
+  createTdmsMaintenance,
+  fetchTdmsInspections,
+} from "@/services/api/tdms";
+import {
+  createTmsDefect,
+  createTmsInspection,
+  createTmsMaintenance,
+  fetchTmsInspections,
+} from "@/services/api/tms";
+import {
+  createSmmsAlert,
+  createSmmsInspection,
+  createSmmsMaintenance,
+  fetchSmmsInspections,
+} from "@/services/api/smms";
 
 type TabKey = "overview" | "maintenance" | "defects" | "tasks" | "blocks" | "assets" | "request";
 
@@ -87,6 +106,32 @@ export function DepartmentWorkspace({ definition }: { definition: DepartmentDefi
   const [selectedDefect, setSelectedDefect] = useState<UnifiedDefect | null>(null);
   const [selectedTask, setSelectedTask] = useState<PlanningTask | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<UnifiedBlockRequirement | null>(null);
+  const [requestBusy, setRequestBusy] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [requestSuccess, setRequestSuccess] = useState<string | null>(null);
+
+  // Load inspections for the department's source system (needed for defect/failure/alert creation)
+  const [inspections, setInspections] = useState<TmsInspection[] | TdmsInspection[] | SmmsInspection[]>([]);
+  const [inspectionsLoading, setInspectionsLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setInspectionsLoading(true);
+    let fetchFn: typeof fetchTmsInspections | typeof fetchTdmsInspections | typeof fetchSmmsInspections;
+    if (definition.key === "tdms") fetchFn = fetchTdmsInspections;
+    else if (definition.key === "tms") fetchFn = fetchTmsInspections;
+    else fetchFn = fetchSmmsInspections;
+
+    fetchFn({ limit: 500 })
+      .then((res) => {
+        if (!cancelled) setInspections(res);
+      })
+      .catch((err) => console.error("Failed to load inspections:", err))
+      .finally(() => {
+        if (!cancelled) setInspectionsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [definition.key]);
 
   const tabs: TabDef[] = [
     { key: "overview", label: "Overview", icon: Target },

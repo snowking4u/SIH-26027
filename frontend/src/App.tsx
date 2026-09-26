@@ -78,34 +78,69 @@ const NotFoundPage = lazy(() =>
 export function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/controller" element={<ControllerPage />} />
-          <Route path="/live-map" element={<LiveMapPage />} />
-          <Route path="/maintenance" element={<MaintenancePage />} />
-          <Route path="/block-requests" element={<BlockRequestsPage />} />
-          <Route path="/planning" element={<PlanningPage />} />
-          <Route path="/candidate-windows" element={<CandidateWindowsPage />} />
-          <Route path="/block-plans" element={<BlockPlansPage />} />
-          <Route path="/train-impact" element={<TrainImpactPage />} />
-          <Route path="/departments" element={<DepartmentsPage />} />
-          <Route path="/departments/engineering" element={<EngineeringDepartmentPage />} />
-          <Route path="/departments/snt" element={<SignallingDepartmentPage />} />
-          <Route path="/departments/traction" element={<TractionDepartmentPage />} />
-          <Route path="/departments/traction-trd" element={<TractionDepartmentPage />} />
-          <Route path="/execution" element={<ExecutionPage />} />
-          <Route path="/audit" element={<AuditPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/coa" element={<CoaPage />} />
-          <Route path="/tms" element={<TmsPage />} />
-          <Route path="/tdms" element={<TdmsPage />} />
-          <Route path="/smms" element={<SmmsPage />} />
-          <Route path="/unified" element={<UnifiedPage />} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Route>
-        <Route path="/index.html" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          {/* Public Login Route */}
+          <Route
+            path="/login"
+            element={<LoginPage />}
+          />
+
+          {/* Protected Application Routes */}
+          <Route
+            element={
+              <RoleGuard allowedRoles={["controller", "tdms", "tms", "smms"]} />
+            }
+          >
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/controller" element={<ControllerPage />} />
+              <Route path="/live-map" element={<LiveMapPage />} />
+              <Route path="/maintenance" element={<MaintenancePage />} />
+              <Route path="/block-requests" element={<BlockRequestsPage />} />
+              <Route path="/planning" element={<PlanningPage />} />
+              <Route path="/candidate-windows" element={<CandidateWindowsPage />} />
+              <Route path="/block-plans" element={<BlockPlansPage />} />
+              <Route path="/train-impact" element={<TrainImpactPage />} />
+
+              <Route path="/departments" element={<DepartmentsPage />} />
+              <Route
+                path="/departments/engineering"
+                element={<EngineeringDepartmentPage />}
+              />
+              <Route
+                path="/departments/snt"
+                element={<SignallingDepartmentPage />}
+              />
+              <Route
+                path="/departments/traction"
+                element={<TractionDepartmentPage />}
+              />
+              <Route
+                path="/departments/traction-trd"
+                element={<TractionDepartmentPage />}
+              />
+
+              <Route path="/execution" element={<ExecutionPage />} />
+              <Route path="/audit" element={<AuditPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/coa" element={<CoaPage />} />
+
+              <Route path="/tms" element={<TmsPage />} />
+              <Route path="/tdms" element={<TdmsPage />} />
+              <Route path="/smms" element={<SmmsPage />} />
+              <Route path="/unified" element={<UnifiedPage />} />
+
+              <Route path="*" element={<NotFoundPage />} />
+            </Route>
+          </Route>
+
+          <Route
+            path="/index.html"
+            element={<Navigate to="/" replace />}
+          />
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

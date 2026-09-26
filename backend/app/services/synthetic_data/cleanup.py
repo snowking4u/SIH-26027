@@ -10,8 +10,10 @@ TMS/TDMS/SMMS/COA source systems are never touched.
 
 from __future__ import annotations
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
+
+from . import rail_reference
 
 from app.models import (
     AssetMaster,
@@ -494,7 +496,19 @@ def cleanup_synthetic(db: Session) -> dict[str, int]:
         "operational_event",
         delete(OperationalEvent).where(OperationalEvent.source_event_id.like("SYN-COA-%")),
     )
-    run("train", delete(Train).where(Train.train_id.like("SYN-TRAIN-%")))
+    # Trains now carry real service identities, so the roster is matched by its
+    # exact id set (a closed list) in addition to the legacy SYN-TRAIN- prefix.
+    # Importing genuine COA data that reuses one of these very specific ids
+    # would also be removed by --cleanup.
+    run(
+        "train",
+        delete(Train).where(
+            or_(
+                Train.train_id.like("SYN-TRAIN-%"),
+                Train.train_id.in_(rail_reference.REFERENCE_TRAIN_IDS),
+            )
+        ),
+    )
 
     # 24-26. Source systems' synthetic rows (maintenance after defect/alert).
     run(
@@ -545,13 +559,47 @@ def cleanup_synthetic(db: Session) -> dict[str, int]:
             )
         ),
     )
+    # The generator now writes *real* Agra Division station/line codes, so
+    # location rows cannot be identified by a SYN-* prefix any more. They are
+    # matched on the closed (station_code, line_code) reference set instead.
+    #
+    # Safety guard: a location referenced by any genuine (non-generator) asset
+    # is never deleted, so importing real master data later cannot be undone
+    # by `--cleanup`.
+    protected_loc_ids = _ids(
+        db.execute(
+            select(AssetMaster.location_id)
+            .where(
+                AssetMaster.location_id.isnot(None),
+                ~AssetMaster.source_asset_id.like("SYN-%"),
+            )
+            .distinct()
+        )
+    )
+    reference_loc_ids = _ids(
+        db.execute(
+            select(LocationMaster.id).where(
+                or_(
+                    *(
+                        and_(
+                            LocationMaster.station_code == loc.station_code,
+                            LocationMaster.line_code == loc.line_code,
+                        )
+                        for loc in rail_reference.LOCATIONS
+                    )
+                ),
+                ~LocationMaster.id.in_(protected_loc_ids),
+            )
+        )
+    )
+
     run(
         "location_master",
         delete(LocationMaster).where(
             or_(
                 LocationMaster.station_code.like("SYN-ST%"),
                 LocationMaster.line_code.like("SYN-L%"),
-                LocationMaster.id.in_(junk_loc_ids),
+                LocationMaster.id.in_(junk_loc_ids | reference_loc_ids),
             )
         ),
     )

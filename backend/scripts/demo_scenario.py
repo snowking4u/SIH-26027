@@ -42,6 +42,7 @@ from app.core.database import SessionLocal
 from app.models.available_window import AvailableWindow
 from app.models.block_plan import BlockPlan
 from app.models.block_plan_task import BlockPlanTask
+from app.models.block_requirement import BlockRequirement
 from app.models.candidate_block_window import CandidateBlockWindow
 from app.models.controller_decision import ControllerDecision
 from app.models.line_occupancy import LineOccupancy
@@ -86,56 +87,47 @@ MIXED_OCCUPANCY_TEMPLATE = [
 # The five extended demo plans. Every task's block requirement needs NO
 # power/traffic block and the task location/line matches the derived window,
 # so the deterministic validator records exactly 4/4 PASSED with no warnings.
+#
+# Tasks are selected by ordinal offset, not by primary key: task ids are not
+# stable across regenerations of the dataset. The station/line is read from
+# the task's own block requirement, so no railway code is hardcoded here.
+# The candidate duration is derived from the task's required duration.
+# Each plan's gap_index must provide a gap >= the task's required duration.
 EXTENDED_DEMO_PLANS = [
     {
         "plan_code": "RAILFLOW-DEMO-PLAN-002",
         "run_code": "RAILFLOW-DEMO-RUN-002",
-        "task_id": 1434,  # RELAY_REPLACEMENT (SIGNAL) SYN-ST001 / SYN-L002
-        "station_code": "SYN-ST001",
-        "line_number": "SYN-L002",
+        "task_offset": 0,   # 30 min task
         "plan_day": date(2026, 9, 26),
-        "gap_index": 1,  # 08:00-09:30
-        "candidate_minutes": 60,
+        "gap_index": 1,     # 08:00-09:30 (90 min gap)
     },
     {
         "plan_code": "RAILFLOW-DEMO-PLAN-003",
         "run_code": "RAILFLOW-DEMO-RUN-003",
-        "task_id": 1409,  # REPLACEMENT (BRIDGE) SYN-ST002 / SYN-L012
-        "station_code": "SYN-ST002",
-        "line_number": "SYN-L012",
+        "task_offset": 1,   # 120 min task
         "plan_day": date(2026, 9, 26),
-        "gap_index": 2,  # 13:00-15:00
-        "candidate_minutes": 120,
+        "gap_index": 2,     # 13:00-15:00 (120 min gap)
     },
     {
         "plan_code": "RAILFLOW-DEMO-PLAN-004",
         "run_code": "RAILFLOW-DEMO-RUN-004",
-        "task_id": 1441,  # WIRING_RECTIFICATION (POINT_MACHINE) SYN-ST001 / SYN-L001
-        "station_code": "SYN-ST001",
-        "line_number": "SYN-L001",
+        "task_offset": 2,   # 90 min task
         "plan_day": date(2026, 9, 27),
-        "gap_index": 1,  # 08:00-09:30
-        "candidate_minutes": 90,
+        "gap_index": 1,     # 08:00-09:30 (90 min gap)
     },
     {
         "plan_code": "RAILFLOW-DEMO-PLAN-005",
         "run_code": "RAILFLOW-DEMO-RUN-005",
-        "task_id": 1431,  # TRACK_RECONDITIONING (SIGNAL) SYN-ST002 / SYN-L011
-        "station_code": "SYN-ST002",
-        "line_number": "SYN-L011",
+        "task_offset": 3,   # 120 min task
         "plan_day": date(2026, 9, 28),
-        "gap_index": 2,  # 13:00-15:00
-        "candidate_minutes": 90,
+        "gap_index": 2,     # 13:00-15:00 (120 min gap)
     },
     {
         "plan_code": "RAILFLOW-DEMO-PLAN-006",
         "run_code": "RAILFLOW-DEMO-RUN-006",
-        "task_id": 1443,  # PANEL_INSPECTION (TRACK) SYN-ST001 / SYN-L002
-        "station_code": "SYN-ST001",
-        "line_number": "SYN-L002",
+        "task_offset": 5,   # 60 min task (offset 4 is 120 min, doesn't fit gap_index 1)
         "plan_day": date(2026, 9, 29),
-        "gap_index": 1,  # 08:00-09:30
-        "candidate_minutes": 60,
+        "gap_index": 1,     # 08:00-09:30 (90 min gap)
     },
 ]
 
@@ -158,6 +150,108 @@ def _cleanup_probe_plan(db) -> list:
         ).delete(synchronize_session=False)
         db.delete(plan)
         removed.append(code)
+
+    # Also clean up demo plans to ensure fresh generation with fixed logic
+    for cfg in EXTENDED_DEMO_PLANS:
+        plan = db.scalar(select(BlockPlan).where(BlockPlan.plan_code == cfg["plan_code"]))
+        if plan is not None:
+            run_id = plan.optimization_run_id
+            # Delete all block plans using this run_id first
+            if run_id is not None:
+                related_plans = db.scalars(
+                    select(BlockPlan).where(BlockPlan.optimization_run_id == run_id)
+                ).all()
+                for p in related_plans:
+                    db.query(ControllerDecision).filter(
+                        ControllerDecision.block_plan_id == p.id
+                    ).delete(synchronize_session=False)
+                    db.query(PlanValidation).filter(
+                        PlanValidation.block_plan_id == p.id
+                    ).delete(synchronize_session=False)
+                    db.query(BlockPlanTask).filter(
+                        BlockPlanTask.block_plan_id == p.id
+                    ).delete(synchronize_session=False)
+                    db.delete(p)
+                    removed.append(p.plan_code)
+                db.flush()
+            # Also delete candidate windows created for this plan's task/window combo
+            # to ensure fresh candidates with correct durations are created.
+            # Must be done BEFORE deleting optimization_run (which deletes optimization_input
+            # that references candidate_block_window).
+            task = _resolve_demo_task(db, cfg["task_offset"])
+            if task is not None:
+                block = task.block_requirement
+                if block is not None:
+                    gaps = _available_gap_windows(
+                        db, block.station_code, block.line_number, cfg["plan_day"]
+                    )
+                    if cfg["gap_index"] < len(gaps):
+                        _, _, window_id = gaps[cfg["gap_index"]]
+                        db.query(CandidateBlockWindow).filter(
+                            CandidateBlockWindow.planning_task_id == task.id,
+                            CandidateBlockWindow.available_window_id == window_id
+                        ).delete(synchronize_session=False)
+            # Now delete the optimization run and its children
+            if run_id is not None:
+                db.query(OptimizationInput).filter(
+                    OptimizationInput.optimization_run_id == run_id
+                ).delete(synchronize_session=False)
+                db.query(OptimizationOutput).filter(
+                    OptimizationOutput.optimization_run_id == run_id
+                ).delete(synchronize_session=False)
+                db.query(OptimizationRun).filter(
+                    OptimizationRun.id == run_id
+                ).delete(synchronize_session=False)
+
+    # Clean up primary demo plan
+    plan = db.scalar(select(BlockPlan).where(BlockPlan.plan_code == DEMO_PLAN_CODE))
+    if plan is not None:
+        run_id = plan.optimization_run_id
+        if run_id is not None:
+            related_plans = db.scalars(
+                select(BlockPlan).where(BlockPlan.optimization_run_id == run_id)
+            ).all()
+            for p in related_plans:
+                db.query(ControllerDecision).filter(
+                    ControllerDecision.block_plan_id == p.id
+                ).delete(synchronize_session=False)
+                db.query(PlanValidation).filter(
+                    PlanValidation.block_plan_id == p.id
+                ).delete(synchronize_session=False)
+                db.query(BlockPlanTask).filter(
+                    BlockPlanTask.block_plan_id == p.id
+                ).delete(synchronize_session=False)
+                db.delete(p)
+                removed.append(p.plan_code)
+            db.flush()
+        if run_id is not None:
+            db.query(OptimizationInput).filter(
+                OptimizationInput.optimization_run_id == run_id
+            ).delete(synchronize_session=False)
+            db.query(OptimizationOutput).filter(
+                OptimizationOutput.optimization_run_id == run_id
+            ).delete(synchronize_session=False)
+            db.query(OptimizationRun).filter(
+                OptimizationRun.id == run_id
+            ).delete(synchronize_session=False)
+
+    # Clean up any revision plans
+    for code in [f"{cfg['plan_code']}-R{i}" for cfg in EXTENDED_DEMO_PLANS for i in range(1, 4)] + [f"{DEMO_PLAN_CODE}-R{i}" for i in range(1, 4)]:
+        plan = db.scalar(select(BlockPlan).where(BlockPlan.plan_code == code))
+        if plan is not None:
+            db.query(ControllerDecision).filter(
+                ControllerDecision.block_plan_id == plan.id
+            ).delete(synchronize_session=False)
+            db.query(PlanValidation).filter(
+                PlanValidation.block_plan_id == plan.id
+            ).delete(synchronize_session=False)
+            db.query(BlockPlanTask).filter(
+                BlockPlanTask.block_plan_id == plan.id
+            ).delete(synchronize_session=False)
+            db.delete(plan)
+            removed.append(code)
+
+    db.commit()
     return removed
 
 
@@ -369,13 +463,40 @@ def _available_gap_windows(
     return sorted(gap_windows)
 
 
+def _resolve_demo_task(db, offset: int):
+    """Pick the demo planning task at ``offset`` among usable tasks.
+
+    Only tasks that already carry a block requirement with a station and line
+    are eligible, because the scenario needs those to locate the derived
+    occupancy gap. Ordering by id keeps the selection deterministic.
+    """
+    return db.scalars(
+        select(PlanningTask)
+        .join(PlanningTask.block_requirement)
+        .where(
+            BlockRequirement.station_code.isnot(None),
+            BlockRequirement.line_number.isnot(None),
+        )
+        .order_by(PlanningTask.id)
+        .offset(offset)
+        .limit(1)
+    ).first()
+
+
 def _seed_extended_plan(db, cfg: dict) -> dict:
-    task = db.get(PlanningTask, cfg["task_id"])
+    task = _resolve_demo_task(db, cfg["task_offset"])
     if task is None:
-        raise SystemExit(f"Planning task {cfg['task_id']} not found")
+        raise SystemExit(
+            f"No usable planning task at offset {cfg['task_offset']} for "
+            f"{cfg['plan_code']}. Run scripts/generate_synthetic_data.py first."
+        )
+
+    block = task.block_requirement
+    station_code = block.station_code
+    line_number = block.line_number
 
     gaps = _available_gap_windows(
-        db, cfg["station_code"], cfg["line_number"], cfg["plan_day"]
+        db, station_code, line_number, cfg["plan_day"]
     )
     if cfg["gap_index"] >= len(gaps):
         raise SystemExit(
@@ -384,14 +505,25 @@ def _seed_extended_plan(db, cfg: dict) -> dict:
     gap_start, gap_end, window_id = gaps[cfg["gap_index"]]
     window = db.get(AvailableWindow, window_id)
 
-    slot_start = gap_start
-    slot_end = slot_start + timedelta(minutes=cfg["candidate_minutes"])
-    if slot_end > gap_end:
+    # Determine required duration from task or block requirement
+    required_duration = None
+    if task.duration_minutes is not None and task.duration_minutes > 0:
+        required_duration = task.duration_minutes
+    elif block is not None and block.required_duration_minutes is not None and block.required_duration_minutes > 0:
+        required_duration = block.required_duration_minutes
+
+    if required_duration is None:
         raise SystemExit(
-            f"Planned slot exceeds derived gap for {cfg['plan_code']}"
+            f"Cannot create candidate for {cfg['plan_code']}: task {task.id} has no required duration"
         )
 
-    block = task.block_requirement
+    slot_start = gap_start
+    slot_end = slot_start + timedelta(minutes=required_duration)
+    if slot_end > gap_end:
+        raise SystemExit(
+            f"Required duration {required_duration}min exceeds derived gap for {cfg['plan_code']}"
+        )
+
     candidate = db.scalar(
         select(CandidateBlockWindow).where(
             CandidateBlockWindow.planning_task_id == task.id,
@@ -405,7 +537,7 @@ def _seed_extended_plan(db, cfg: dict) -> dict:
             available_window_id=window.id,
             candidate_start=slot_start,
             candidate_end=slot_end,
-            candidate_duration_minutes=cfg["candidate_minutes"],
+            candidate_duration_minutes=required_duration,
             feasible=True,
             feasibility_status=CANDIDATE_FEASIBLE_STATUS,
             feasibility_reason=CANDIDATE_FEASIBLE_REASON,
@@ -459,8 +591,8 @@ def _seed_extended_plan(db, cfg: dict) -> dict:
                 selected=True,
                 output_payload={
                     "scenario": "RAILFLOW_DEMO",
-                    "station_code": cfg["station_code"],
-                    "line_number": cfg["line_number"],
+                    "station_code": station_code,
+                    "line_number": line_number,
                 },
             )
         )
@@ -481,8 +613,8 @@ def _seed_extended_plan(db, cfg: dict) -> dict:
             planning_horizon_end=end_of_day,
             description=(
                 "Demo scenario - a validated block proposal for "
-                f"{task.task_code} at {cfg['station_code']} "
-                f"({cfg['line_number']})."
+                f"{task.task_code} at {station_code} "
+                f"({line_number})."
             ),
         )
         db.add(plan)
@@ -501,7 +633,7 @@ def _seed_extended_plan(db, cfg: dict) -> dict:
             candidate_block_window_id=candidate.id,
             planned_start=slot_start,
             planned_end=slot_end,
-            planned_duration_minutes=cfg["candidate_minutes"],
+            planned_duration_minutes=candidate.candidate_duration_minutes,
             sequence_number=1,
             status="PROPOSED",
             remarks="RAILFLOW_DEMO deterministic placement.",
@@ -522,8 +654,8 @@ def _seed_extended_plan(db, cfg: dict) -> dict:
         "block_plan_task_id": plan_task.id,
         "optimization_run_id": run.id,
         "validation_ids": [v.id for v in validations],
-        "station_code": cfg["station_code"],
-        "line_number": cfg["line_number"],
+        "station_code": station_code,
+        "line_number": line_number,
         "planned_start": slot_start.isoformat(),
         "planned_end": slot_end.isoformat(),
         "validation_summary": {

@@ -812,15 +812,122 @@ function CorridorTimeline({ lines, plannedBlocks, windows, candidates, occupancy
       .filter((row) => row.window != null);
   }, [candidates, windows]);
 
+  // Build per-line lane assignments for overlapping items (candidates, occupancy, planned)
+  // Windows are background and don't need lanes.
+  const linesWithLanes = useMemo(() => {
+    return lines.map((line) => {
+      const windowsOnLine = windows.filter((w) => w.line_number === line.key);
+      const candidatesOnLine = candidateWindowsOnTrack
+        .filter((row) => row.window?.line_number === line.key)
+        .map((row) => ({
+          type: 'candidate' as const,
+          start: row.candidate.candidate_start,
+          end: row.candidate.candidate_end,
+          id: row.candidate.id,
+        }));
+      const occupancyOnLine = occupancy
+        .filter((o) => o.line_number === line.key)
+        .map((o) => ({
+          type: 'occupancy' as const,
+          start: o.occupancy_start,
+          end: o.occupancy_end,
+          id: o.id,
+        }));
+      const plannedOnLine = plannedBlocks
+        .filter((b) => b.line === line.key)
+        .map((b) => ({
+          type: 'planned' as const,
+          start: b.task.planned_start,
+          end: b.task.planned_end,
+          id: b.task.id,
+        }));
+
+      // All items that need lane assignment (not windows)
+      const laneItems = [
+        ...candidatesOnLine,
+        ...occupancyOnLine,
+        ...plannedOnLine,
+      ];
+
+      // Greedy lane assignment: sort by start time, assign to first non-overlapping lane
+      const laneAssignments = new Map<number, { top: number; height: number }>();
+      const lanes: Array<{ end: number }> = [];
+
+      const sortedItems = [...laneItems].sort((a, b) => {
+        const sa = minutesOfDay(a.start) ?? 0;
+        const sb = minutesOfDay(b.start) ?? 0;
+        return sa - sb;
+      });
+
+      for (const item of sortedItems) {
+        const itemStart = minutesOfDay(item.start) ?? 0;
+        const itemEnd = minutesOfDay(item.end) ?? 0;
+        if (itemStart === 0 && itemEnd === 0) continue;
+
+        let assignedLane = 0;
+        while (true) {
+          const laneEnd = lanes[assignedLane]?.end ?? -1;
+          if (itemStart >= laneEnd) {
+            lanes[assignedLane] = { end: itemEnd };
+            break;
+          }
+          assignedLane++;
+        }
+        const barHeight = item.type === 'planned' ? 12 : 4;
+        laneAssignments.set(item.id, {
+          top: assignedLane * 6, // 4px bar + 2px gap
+          height: barHeight,
+        });
+      }
+
+      const maxLane = lanes.length > 0 ? lanes.length : 1;
+      const contentHeight = Math.max(4, maxLane * 6 + 4);
+
+      return {
+        line,
+        windowsOnLine,
+        candidatesOnLine,
+        occupancyOnLine,
+        plannedOnLine,
+        laneAssignments,
+        contentHeight,
+      };
+    }).filter((lineData) => {
+      return (
+        lineData.windowsOnLine.length > 0 ||
+        lineData.candidatesOnLine.length > 0 ||
+        lineData.occupancyOnLine.length > 0 ||
+        lineData.plannedOnLine.length > 0
+      );
+    });
+  }, [lines, windows, candidateWindowsOnTrack, occupancy, plannedBlocks]);
+
+  // Empty state when no lines have data
+  if (linesWithLanes.length === 0) {
+    return (
+      <section className="rounded-lg border border-line bg-surface-white p-5 shadow-card">
+        <SectionHeader
+          icon={CalendarRange}
+          title="Daily timeline"
+          description="One shared 00:00 \u2192 24:00 time axis. Each line section shows its recorded occupancy, available windows, candidates and the planned block."
+          right={<Badge variant="outline">00:00 \u2192 24:00</Badge>}
+        />
+        <div className="mt-4 flex items-center justify-center h-24 text-ink-faint text-sm">
+          No timeline data available for the current selection.
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="rounded-lg border border-line bg-surface-white p-5 shadow-card">
       <SectionHeader
         icon={CalendarRange}
         title="Daily timeline"
-        description="One shared 00:00 → 24:00 time axis. Each line section shows its recorded occupancy, available windows, candidates and the planned block."
-        right={<Badge variant="outline">00:00 → 24:00</Badge>}
+        description="One shared 00:00 \u2192 24:00 time axis. Each line section shows its recorded occupancy, available windows, candidates and the planned block."
+        right={<Badge variant="outline">00:00 \u2192 24:00</Badge>}
       />
-      <div className="mt-4 space-y-1">
+      <div className="mt-4 space-y-2">
         <div className="relative h-5">
           {[0, 6, 12, 18, 24].map((hour) => (
             <span
@@ -832,14 +939,13 @@ function CorridorTimeline({ lines, plannedBlocks, windows, candidates, occupancy
             </span>
           ))}
         </div>
-        {lines.map((line) => {
-          const occupancyOnLine = occupancy.filter((row) => row.line_number === line.key);
-          const windowsOnLine = windows.filter((row) => row.line_number === line.key);
-          const plannedOnLine = plannedBlocks.filter((block) => block.line === line.key);
+        {linesWithLanes.map((lineData) => {
+          const { line, windowsOnLine, candidatesOnLine, occupancyOnLine, plannedOnLine, laneAssignments, contentHeight } = lineData;
           return (
-            <div key={line.key} className="grid grid-cols-[5.5rem_1fr] items-center gap-2">
+            <div key={line.key} className="grid grid-cols-[5.5rem_1fr] items-start gap-2">
               <span className="truncate font-mono text-[9px] text-navy-500">{line.key}</span>
-              <div className="relative h-4">
+              <div className="relative" style={{ height: contentHeight }}>
+                {/* Background windows - always at top */}
                 {windowsOnLine.map((window) => {
                   const span = spanPct(window.window_start, window.window_end);
                   if (!span) return null;
@@ -852,43 +958,63 @@ function CorridorTimeline({ lines, plannedBlocks, windows, candidates, occupancy
                     />
                   );
                 })}
-                {candidateWindowsOnTrack
-                  .filter((row) => row.window?.line_number === line.key)
-                  .map((row) => {
-                    const span = spanPct(row.candidate.candidate_start, row.candidate.candidate_end);
-                    if (!span) return null;
-                    return (
-                      <div
-                        key={row.candidate.id}
-                        className="absolute top-0 h-1.5 rounded-sm bg-ai/80"
-                        style={{ left: `${span.left}%`, width: `${span.width}%` }}
-                        title={`Candidate ${row.candidate.feasibility_status} · ${asTime(row.candidate.candidate_start)}–${asTime(row.candidate.candidate_end)}`}
-                      />
-                    );
-                  })}
-                {occupancyOnLine.slice(0, 24).map((row) => {
-                  const span = spanPct(row.occupancy_start, row.occupancy_end);
-                  if (!span) return null;
+                {/* Candidate bars - lane-assigned */}
+                {candidatesOnLine.map((item) => {
+                  const span = spanPct(item.start, item.end);
+                  const assignment = laneAssignments.get(item.id);
+                  if (!span || !assignment) return null;
                   return (
                     <div
-                      key={row.id}
-                      className="absolute h-1 rounded-sm bg-amber-500"
-                      style={{ left: `${span.left}%`, width: `${span.width}%`, top: 10 }}
-                      title={`Occupancy T${row.train_id ?? "?"} ${asTime(row.occupancy_start)}–${asTime(row.occupancy_end)}`}
+                      key={item.id}
+                      className="absolute rounded-sm bg-ai/80"
+                      style={{
+                        left: `${span.left}%`,
+                        width: `${span.width}%`,
+                        top: assignment.top,
+                        height: assignment.height,
+                      }}
+                      title={`Candidate ${item.id} · ${asTime(item.start)}–${asTime(item.end)}`}
                     />
                   );
                 })}
-                {plannedOnLine.map((block) => {
-                  const span = spanPct(block.task.planned_start, block.task.planned_end);
-                  if (!span) return null;
+                {/* Occupancy bars - lane-assigned */}
+                {occupancyOnLine.map((item) => {
+                  const span = spanPct(item.start, item.end);
+                  const assignment = laneAssignments.get(item.id);
+                  if (!span || !assignment) return null;
+                  return (
+                    <div
+                      key={item.id}
+                      className="absolute rounded-sm bg-amber-500"
+                      style={{
+                        left: `${span.left}%`,
+                        width: `${span.width}%`,
+                        top: assignment.top,
+                        height: assignment.height,
+                      }}
+                      title={`Occupancy ${item.id} · ${asTime(item.start)}–${asTime(item.end)}`}
+                    />
+                  );
+                })}
+                {/* Planned blocks - lane-assigned */}
+                {plannedOnLine.map((item) => {
+                  const span = spanPct(item.start, item.end);
+                  const assignment = laneAssignments.get(item.id);
+                  if (!span || !assignment) return null;
+                  const block = plannedBlocks.find((b) => b.task.id === item.id);
                   return (
                     <button
-                      key={`${block.planCode}-${block.task.id}`}
+                      key={item.id}
                       type="button"
-                      onClick={() => onSelect({ kind: "planned", block })}
-                      className="absolute top-0 h-3 rounded-sm border border-red-200/60 bg-red-500/90 text-[7px] font-bold leading-[0.75] text-white transition-colors hover:bg-red-400"
-                      style={{ left: `${span.left}%`, width: `max(${span.width}%, 1rem)` }}
-                      title={`${block.planCode} · ${asTime(block.task.planned_start)}–${asTime(block.task.planned_end)}`}
+                      onClick={() => block && onSelect({ kind: "planned", block })}
+                      className="absolute rounded-sm border border-red-200/60 bg-red-500/90 text-[7px] font-bold leading-[0.75] text-white transition-colors hover:bg-red-400"
+                      style={{
+                        left: `${span.left}%`,
+                        width: `max(${span.width}%, 1rem)`,
+                        top: assignment.top,
+                        height: assignment.height,
+                      }}
+                      title={`${block?.planCode ?? item.id} · ${asTime(item.start)}–${asTime(item.end)}`}
                     >
                       ⚑
                     </button>

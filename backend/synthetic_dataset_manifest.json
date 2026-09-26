@@ -1,128 +1,143 @@
 {
-  "dataset_id": "SYN-STEP11-20260925-0001",
+  "dataset_id": "SYN-STEP11-20260926-0001",
   "generator_version": "STEP11-1.0",
   "seed": 42,
   "scale": "tiny",
   "scenario": "normal",
-  "start_date": "2026-09-25",
-  "days": 1,
+  "start_date": "2026-09-26",
+  "days": 2,
   "batch_size": 1000,
-  "with_optimization": true,
-  "generation_timestamp": "2026-09-25T14:55:54",
+  "with_optimization": false,
+  "generation_timestamp": "2026-09-26T12:35:14",
   "configuration_summary": {
     "seed": 42,
     "scale": "tiny",
-    "days": 1,
-    "start_date": "2026-09-25",
+    "days": 2,
+    "start_date": "2026-09-26",
     "scenario": "normal",
     "batch_size": 1000,
-    "with_optimization": true,
+    "with_optimization": false,
     "window_template": "normal",
+    "rail_reference": {
+      "zone": "NCR - North Central Railway",
+      "division": "AGC - Agra Division",
+      "sections": 4,
+      "lines": 3,
+      "stations": 13,
+      "location_rows": 21,
+      "mappable_stations": 13,
+      "trains": 16,
+      "km_verified_stations": [
+        "AGC",
+        "BTSR",
+        "MTJ",
+        "RKM"
+      ]
+    },
     "targets": {
       "assets": 10,
-      "trains": 10,
+      "trains": 16,
       "inspections": 30,
       "defects": 10,
       "maintenance": 10,
-      "stations": 3,
+      "stations": 13,
       "resources": 6
     }
   },
   "windows": {
-    "derived": 18,
-    "tagged_as_synthetic": 18
+    "derived": 126,
+    "tagged_as_synthetic": 0
   },
   "master_stats": {
-    "locations": 6,
-    "assets": 10,
-    "asset_parameters": 2
+    "locations": 0,
+    "assets": 0,
+    "asset_parameters": 0
   },
   "source_stats": {
     "tms": {
-      "inspections": 30,
-      "defects": 10,
-      "maintenance": 10
+      "inspections": 0,
+      "defects": 0,
+      "maintenance": 0
     },
     "tdms": {
-      "inspections": 30,
-      "failures": 10,
-      "maintenance": 11
+      "inspections": 0,
+      "failures": 0,
+      "maintenance": 0
     },
     "smms": {
-      "inspections": 30,
-      "alerts": 10,
-      "maintenance": 10
+      "inspections": 0,
+      "alerts": 0,
+      "maintenance": 0
     }
   },
   "normalized": {
     "tms": {
       "processed": 20,
-      "created": 20,
+      "created": 0,
       "updated": 0,
-      "skipped": 0
+      "skipped": 20
     },
     "tdms": {
       "processed": 21,
-      "created": 21,
+      "created": 0,
       "updated": 0,
-      "skipped": 0
+      "skipped": 21
     },
     "smms": {
       "processed": 20,
-      "created": 20,
+      "created": 0,
       "updated": 0,
-      "skipped": 0
+      "skipped": 20
     }
   },
   "block_requirements": {
     "requirements_processed": 31,
-    "block_requirements_created": 30,
-    "skipped_no_block_edge": 1,
-    "skipped_existing": 0
+    "block_requirements_created": 0,
+    "skipped_no_block_edge": 2,
+    "skipped_existing": 29
   },
   "planning": {
-    "resources_created": 6,
-    "task_resources_created": 62,
-    "task_resources_skipped": 0,
-    "dependencies_created": 17,
-    "dependencies_skipped": 0,
+    "resources_created": 0,
+    "task_resources_created": 0,
+    "task_resources_skipped": 62,
+    "dependencies_created": 0,
+    "dependencies_skipped": 17,
     "planning_tasks": {
       "processed": 31,
-      "created": 31,
+      "created": 0,
       "updated": 0,
-      "skipped": 0
+      "skipped": 31
     },
     "constraints": {
       "processed": 31,
-      "created": 121,
+      "created": 0,
       "updated": 0,
-      "skipped": 1
+      "skipped": 119
     }
   },
   "candidates": {
-    "processed": 558,
-    "created": 558,
-    "skipped": 0,
-    "infeasible": 515,
-    "requires_review": 19
+    "processed": 3906,
+    "created": 0,
+    "skipped": 3906,
+    "infeasible": 0,
+    "requires_review": 0
   },
   "optimization": {
-    "run_created": 1,
-    "inputs_created": 31,
-    "skipped_run": 0,
-    "run_code": "SYN-OPT-SYN-STEP11-20260925-0001-0001"
+    "run_created": 0,
+    "inputs_created": 0,
+    "skipped_run": 0
   },
   "table_counts": {
     "location_master": 21,
     "asset_master": 10,
     "asset_parameter": 2,
     "source_system": 4,
-    "train": 10,
-    "train_schedule": 6,
-    "train_movement": 20,
-    "line_occupancy": 24,
-    "operational_event": 14,
-    "available_window": 18,
+    "train": 16,
+    "train_schedule": 42,
+    "train_movement": 64,
+    "line_occupancy": 168,
+    "operational_event": 32,
+    "available_window": 126,
     "tms_inspection": 30,
     "tms_defect": 10,
     "tms_maintenance": 10,
@@ -134,19 +149,19 @@
     "smms_maintenance": 10,
     "defect_failure": 30,
     "maintenance_requirement": 31,
-    "block_requirement": 30,
+    "block_requirement": 29,
     "planning_task": 31,
-    "planning_constraint": 121,
+    "planning_constraint": 117,
     "planning_resource": 6,
     "task_resource": 62,
     "task_dependency": 17,
-    "candidate_block_window": 558,
-    "optimization_run": 1,
-    "optimization_input": 31,
+    "candidate_block_window": 3906,
+    "optimization_run": 6,
+    "optimization_input": 0,
     "optimization_output": 0,
-    "block_plan": 0,
-    "block_plan_task": 0,
-    "plan_validation": 0,
+    "block_plan": 15,
+    "block_plan_task": 15,
+    "plan_validation": 75,
     "controller_decision": 0,
     "execution_outcome": 0
   }

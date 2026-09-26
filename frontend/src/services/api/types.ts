@@ -232,6 +232,26 @@ export interface TmsMaintenanceCreate {
   remarks?: string | null;
 }
 
+export interface TmsDefectCreate {
+  asset_id: number;
+  inspection_id: number;
+  defect_code: string;
+  defect_description?: string | null;
+  severity?: string | null;
+  detected_date?: string | null;
+  status?: string | null;
+  remarks?: string | null;
+}
+
+export interface TmsInspectionCreate {
+  asset_id: number;
+  inspection_date: string;
+  inspection_type: string;
+  parameter_code: string;
+  parameter_value?: string | null;
+  remarks?: string | null;
+}
+
 /* ------------------------------------------------------------------ TDMS */
 
 export interface TdmsFailure {
@@ -277,6 +297,27 @@ export interface TdmsMaintenanceCreate {
   start_date?: string | null;
   end_date?: string | null;
   status?: string;
+  remarks?: string | null;
+}
+
+export interface TdmsFailureCreate {
+  asset_id: number;
+  inspection_id?: number | null;
+  failure_code: string;
+  failure_description?: string | null;
+  severity?: string | null;
+  failure_date: string;
+  status: string;
+  rectification_date?: string | null;
+  remarks?: string | null;
+}
+
+export interface TdmsInspectionCreate {
+  asset_id: number;
+  inspection_date: string;
+  inspection_type: string;
+  parameter_code: string;
+  parameter_value?: string | null;
   remarks?: string | null;
 }
 
@@ -330,6 +371,32 @@ export interface SmmsMaintenanceCreate {
   start_date?: string | null;
   end_date?: string | null;
   status?: string;
+  remarks?: string | null;
+}
+
+export interface SmmsAlertCreate {
+  asset_id: number;
+  inspection_id?: number | null;
+  alert_type_code: string;
+  alert_feedback_code?: string | null;
+  alert_status_code: string;
+  cause_code?: string | null;
+  incidence_date_time: string;
+  rectification_date_time?: string | null;
+  incidence_duration?: string | null;
+  alert_feedback_date_time?: string | null;
+  remarks?: string | null;
+  maintainer_name?: string | null;
+  maintainer_designation?: string | null;
+  maintainer_mobile?: string | null;
+}
+
+export interface SmmsInspectionCreate {
+  asset_id: number;
+  inspection_date: string;
+  inspection_type: string;
+  parameter_code: string;
+  parameter_value?: string | null;
   remarks?: string | null;
 }
 
