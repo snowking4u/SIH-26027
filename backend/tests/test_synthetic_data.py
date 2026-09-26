@@ -625,6 +625,41 @@ def test_cleanup_keeps_only_source_systems(seeded: Session):
     assert seeded.scalar(select(func.count()).select_from(SourceSystem)) == 4
 
 
+def test_cleanup_removes_synthetic_requirements_without_marker(seeded: Session):
+    run_tiny(seeded)
+    requirements = seeded.scalars(select(MaintenanceRequirement)).all()
+    for requirement in requirements:
+        requirement.description = "Normalized maintenance description"
+    block_requirements = seeded.scalars(select(BlockRequirement)).all()
+    for block_requirement in block_requirements:
+        block_requirement.remarks = "Normalized block requirement"
+    seeded.commit()
+
+    cleanup_synthetic(seeded)
+
+    assert seeded.scalar(select(func.count()).select_from(BlockRequirement)) == 0
+    assert seeded.scalar(select(func.count()).select_from(MaintenanceRequirement)) == 0
+    assert seeded.scalar(select(func.count()).select_from(DefectFailure)) == 0
+
+
+def test_cleanup_removes_reference_style_coa_rows(seeded: Session):
+    run_tiny(seeded)
+    for index, train in enumerate(seeded.scalars(select(Train)).all()):
+        train.train_id = f"REF-TRAIN-{index}"
+    for location in seeded.scalars(select(LocationMaster)).all():
+        location.station_code = "REF-STATION"
+        location.line_code = "REF-LINE"
+    for schedule in seeded.scalars(select(TrainSchedule)).all():
+        schedule.station_code = "REF-STATION"
+        schedule.line_number = "REF-LINE"
+    seeded.commit()
+
+    cleanup_synthetic(seeded)
+
+    assert seeded.scalar(select(func.count()).select_from(Train)) == 0
+    assert seeded.scalar(select(func.count()).select_from(LocationMaster)) == 0
+
+
 def test_cleanup_second_run_is_empty(seeded: Session):
     run_tiny(seeded)
     cleanup_synthetic(seeded)

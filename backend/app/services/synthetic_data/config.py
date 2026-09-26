@@ -4,8 +4,10 @@ Everything in this module is deterministic-safe configuration. The actual
 random number generator is created from ``seed`` so the same configuration
 always produces the same dataset.
 
-DO NOT model production railway behaviour here. Values are documented
-starting targets for a synthetic research dataset only.
+Station/line topology and the train roster are **not** configured here: they
+come from :mod:`.rail_reference`, which holds real Agra Division (NCR/AGC)
+reference data. Scale and scenario still govern the *volumes* of
+asset/defect/maintenance/occupancy data generated against that real topology.
 """
 
 from __future__ import annotations
@@ -14,6 +16,8 @@ import random
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
+
+from . import rail_reference
 
 GENERATOR_VERSION = "STEP11-1.0"
 MARKER = "SYNTHETIC_STEP11"
@@ -341,18 +345,28 @@ class SyntheticConfig:
 
     @property
     def train_count(self) -> int:
-        return self.profile.trains
+        """Number of real services materialised in ``train``.
+
+        The roster is a closed reference list, so this is fixed rather than
+        scale-derived; ``profile.trains`` is retained only for backwards
+        compatibility with older manifests.
+        """
+        return len(rail_reference.TRAINS)
 
     @property
     def station_count(self) -> int:
-        return max(
-            1,
-            round(self.profile.stations * self.scenario_config.station_spread),
-        )
+        """Distinct stations in the real Agra Division reference topology.
+
+        Fixed by the reference data, so ``scenario.station_spread`` no longer
+        changes the station count (it still influences defect/maintenance
+        spread across those stations).
+        """
+        return len(rail_reference.REFERENCE_STATION_CODES)
 
     @property
     def line_count(self) -> int:
-        return self.station_count * self.profile.lines_per_station
+        """``location_master`` rows: one per (station, running line) pair."""
+        return len(rail_reference.station_line_combos())
 
     @property
     def inspection_count(self) -> int:
@@ -391,6 +405,7 @@ class SyntheticConfig:
             "batch_size": self.batch_size,
             "with_optimization": self.with_optimization,
             "window_template": self.scenario_config.window_template,
+            "rail_reference": rail_reference.reference_summary(),
             "targets": {
                 "assets": self.asset_count,
                 "trains": self.train_count,

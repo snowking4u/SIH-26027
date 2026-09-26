@@ -1,148 +1,164 @@
 {
-  "dataset_id": "SYN-STEP11-20260925-0001",
+  "dataset_id": "SYN-STEP11-20260926-0001",
   "generator_version": "STEP11-1.0",
-  "seed": 26027,
-  "scale": "small",
-  "scenario": "mixed",
-  "start_date": "2026-09-25",
-  "days": 3,
+  "seed": 42,
+  "scale": "tiny",
+  "scenario": "normal",
+  "start_date": "2026-09-26",
+  "days": 1,
   "batch_size": 1000,
   "with_optimization": true,
-  "generation_timestamp": "2026-09-25T19:03:16",
+  "generation_timestamp": "2026-09-26T17:01:55",
   "configuration_summary": {
-    "seed": 26027,
-    "scale": "small",
-    "days": 3,
-    "start_date": "2026-09-25",
-    "scenario": "mixed",
+    "seed": 42,
+    "scale": "tiny",
+    "days": 1,
+    "start_date": "2026-09-26",
+    "scenario": "normal",
     "batch_size": 1000,
     "with_optimization": true,
-    "window_template": "mixed",
+    "window_template": "normal",
+    "rail_reference": {
+      "zone": "NCR - North Central Railway",
+      "division": "AGC - Agra Division",
+      "sections": 4,
+      "lines": 3,
+      "stations": 13,
+      "location_rows": 21,
+      "mappable_stations": 13,
+      "trains": 16,
+      "km_verified_stations": [
+        "AGC",
+        "BTSR",
+        "MTJ",
+        "RKM"
+      ]
+    },
     "targets": {
-      "assets": 100,
-      "trains": 100,
-      "inspections": 550,
-      "defects": 210,
-      "maintenance": 210,
-      "stations": 10,
-      "resources": 36
+      "assets": 10,
+      "trains": 16,
+      "inspections": 30,
+      "defects": 10,
+      "maintenance": 10,
+      "stations": 13,
+      "resources": 6
     }
   },
   "windows": {
-    "derived": 120,
-    "tagged_as_synthetic": 120
+    "derived": 63,
+    "tagged_as_synthetic": 63
   },
   "master_stats": {
-    "locations": 20,
-    "assets": 100,
-    "asset_parameters": 42
+    "locations": 21,
+    "assets": 10,
+    "asset_parameters": 2
   },
   "source_stats": {
     "tms": {
-      "inspections": 550,
-      "defects": 210,
-      "maintenance": 210
+      "inspections": 30,
+      "defects": 10,
+      "maintenance": 10
     },
     "tdms": {
-      "inspections": 550,
-      "failures": 210,
-      "maintenance": 213
+      "inspections": 30,
+      "failures": 10,
+      "maintenance": 11
     },
     "smms": {
-      "inspections": 550,
-      "alerts": 210,
-      "maintenance": 210
+      "inspections": 30,
+      "alerts": 10,
+      "maintenance": 10
     }
   },
   "normalized": {
     "tms": {
-      "processed": 420,
-      "created": 420,
+      "processed": 20,
+      "created": 20,
       "updated": 0,
       "skipped": 0
     },
     "tdms": {
-      "processed": 423,
-      "created": 423,
+      "processed": 21,
+      "created": 21,
       "updated": 0,
       "skipped": 0
     },
     "smms": {
-      "processed": 420,
-      "created": 420,
+      "processed": 20,
+      "created": 20,
       "updated": 0,
       "skipped": 0
     }
   },
   "block_requirements": {
-    "requirements_processed": 633,
-    "block_requirements_created": 601,
-    "skipped_no_block_edge": 32,
+    "requirements_processed": 31,
+    "block_requirements_created": 30,
+    "skipped_no_block_edge": 1,
     "skipped_existing": 0
   },
   "planning": {
-    "resources_created": 36,
-    "task_resources_created": 1222,
+    "resources_created": 6,
+    "task_resources_created": 62,
     "task_resources_skipped": 0,
-    "dependencies_created": 554,
+    "dependencies_created": 17,
     "dependencies_skipped": 0,
     "planning_tasks": {
-      "processed": 633,
-      "created": 611,
+      "processed": 31,
+      "created": 31,
       "updated": 0,
-      "skipped": 22
+      "skipped": 0
     },
     "constraints": {
-      "processed": 611,
-      "created": 2614,
+      "processed": 31,
+      "created": 121,
       "updated": 0,
-      "skipped": 32
+      "skipped": 1
     }
   },
   "candidates": {
-    "processed": 73320,
-    "created": 73320,
+    "processed": 1953,
+    "created": 1953,
     "skipped": 0,
-    "infeasible": 72244,
-    "requires_review": 1015
+    "infeasible": 1864,
+    "requires_review": 64
   },
   "optimization": {
     "run_created": 1,
-    "inputs_created": 611,
+    "inputs_created": 31,
     "skipped_run": 0,
-    "run_code": "SYN-OPT-SYN-STEP11-20260925-0001-0001"
+    "run_code": "SYN-OPT-SYN-STEP11-20260926-0001-0001"
   },
   "table_counts": {
-    "location_master": 20,
-    "asset_master": 100,
-    "asset_parameter": 42,
+    "location_master": 21,
+    "asset_master": 10,
+    "asset_parameter": 2,
     "source_system": 4,
-    "train": 100,
-    "train_schedule": 60,
-    "train_movement": 600,
-    "line_occupancy": 180,
-    "operational_event": 304,
-    "available_window": 120,
-    "tms_inspection": 550,
-    "tms_defect": 210,
-    "tms_maintenance": 210,
-    "tdms_inspection": 550,
-    "tdms_failure": 210,
-    "tdms_maintenance": 213,
-    "smms_inspection": 550,
-    "smms_alert": 210,
-    "smms_maintenance": 210,
-    "defect_failure": 630,
-    "maintenance_requirement": 633,
-    "block_requirement": 601,
-    "planning_task": 611,
-    "planning_constraint": 2614,
-    "planning_resource": 36,
-    "task_resource": 1222,
-    "task_dependency": 554,
-    "candidate_block_window": 73320,
-    "optimization_run": 1,
-    "optimization_input": 611,
+    "train": 16,
+    "train_schedule": 21,
+    "train_movement": 32,
+    "line_occupancy": 84,
+    "operational_event": 16,
+    "available_window": 63,
+    "tms_inspection": 30,
+    "tms_defect": 10,
+    "tms_maintenance": 10,
+    "tdms_inspection": 30,
+    "tdms_failure": 10,
+    "tdms_maintenance": 11,
+    "smms_inspection": 30,
+    "smms_alert": 10,
+    "smms_maintenance": 10,
+    "defect_failure": 30,
+    "maintenance_requirement": 31,
+    "block_requirement": 30,
+    "planning_task": 31,
+    "planning_constraint": 121,
+    "planning_resource": 6,
+    "task_resource": 62,
+    "task_dependency": 17,
+    "candidate_block_window": 1953,
+    "optimization_run": 7,
+    "optimization_input": 31,
     "optimization_output": 0,
     "block_plan": 0,
     "block_plan_task": 0,
