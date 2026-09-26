@@ -40,6 +40,16 @@ export async function apiPost<T>(
   return response.data;
 }
 
+/** Typed PATCH helper for JSON bodies. */
+export async function apiPatch<T>(
+  path: string,
+  body?: unknown,
+  params?: Record<string, string | number | boolean | undefined>,
+): Promise<T> {
+  const response = await apiClient.patch<T>(path, body, { params });
+  return response.data;
+}
+
 export function isAxiosError(error: unknown): error is AxiosError {
   return axios.isAxiosError(error);
 }

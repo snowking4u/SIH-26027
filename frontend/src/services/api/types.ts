@@ -741,3 +741,47 @@ export interface ExecutionOutcome {
   recorded_at?: string;
   created_at?: string;
 }
+
+export interface AssetUpdate {
+  status?: string | null;
+  asset_name?: string | null;
+  asset_subtype?: string | null;
+  remarks?: string | null;
+}
+
+export interface DefectFailureUpdate {
+  status?: string | null;
+  rectified_at?: string | null;
+  remarks?: string | null;
+}
+
+export interface DepartmentMaintenanceRequestCreate {
+  department_key: string;
+  asset_id: number;
+  maintenance_type: string;
+  description: string;
+  required_duration_minutes: number;
+  planned_date: string;
+  earliest_start?: string | null;
+  latest_end?: string | null;
+  power_block_required?: boolean;
+  traffic_block_required?: boolean;
+  block_type?: string;
+  defect_id?: number | null;
+  new_defect_code?: string | null;
+  new_defect_description?: string | null;
+  new_defect_severity?: string | null;
+}
+
+export interface DepartmentMaintenanceRequestResponse {
+  success: boolean;
+  maintenance_requirement_id: number;
+  block_requirement_id: number;
+  planning_task_id: number;
+  planning_task_code: string;
+  candidate_block_window_id: number | null;
+  block_plan_id: number | null;
+  plan_code: string | null;
+  plan_status: string | null;
+  message: string;
+}
