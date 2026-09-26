@@ -19,6 +19,13 @@ class AssetCreate(AssetBase):
     pass
 
 
+class AssetUpdate(BaseModel):
+    status: str | None = Field(default=None, max_length=50)
+    asset_name: str | None = Field(default=None, max_length=150)
+    asset_subtype: str | None = Field(default=None, max_length=100)
+    remarks: str | None = None
+
+
 class AssetResponse(AssetBase):
     id: int
 

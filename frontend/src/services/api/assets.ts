@@ -1,5 +1,5 @@
-import { apiGet, apiPost, type ListParams } from "@/services/api/client";
-import type { Asset, AssetCreate, AssetParameter, MaybePaginated } from "@/services/api/types";
+import { apiGet, apiPatch, apiPost, type ListParams } from "@/services/api/client";
+import type { Asset, AssetCreate, AssetParameter, AssetUpdate, MaybePaginated } from "@/services/api/types";
 import { toList } from "@/services/api/types";
 
 /** GET /api/assets — master asset register. */
@@ -10,6 +10,11 @@ export async function fetchAssets(params?: ListParams): Promise<Asset[]> {
 /** POST /api/assets — register a new master asset. */
 export async function createAsset(body: AssetCreate): Promise<Asset> {
   return apiPost<Asset>("/api/assets", body);
+}
+
+/** PATCH /api/assets/{id} — update a master asset (status, remarks, etc). */
+export async function updateAsset(assetId: number, body: AssetUpdate): Promise<Asset> {
+  return apiPatch<Asset>(`/api/assets/${assetId}`, body);
 }
 
 /** GET /api/assets/{id}/parameters — parameters recorded for a specific asset. */

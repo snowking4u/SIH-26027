@@ -9,10 +9,26 @@ import {
   fetchUnifiedDefects,
   fetchUnifiedMaintenance,
 } from "@/services/api/unified";
+import {
+  fetchOptimizationDecisions,
+  fetchOptimizationPlans,
+  fetchOptimizationPlanTasks,
+} from "@/services/api/optimization";
+import { fetchTdmsInspections } from "@/services/api/tdms";
+import { fetchTmsInspections } from "@/services/api/tms";
+import { fetchSmmsInspections } from "@/services/api/smms";
 import type {
+  Asset,
+  BlockPlan,
+  BlockPlanTask,
+  ControllerDecision,
   Location,
   PlanningPriority,
   PlanningTask,
+  SmmsInspection,
+  TdmsInspection,
+  TmsInspection,
+  UnifiedBlockRequirement,
   UnifiedDefect,
   UnifiedMaintenance,
 } from "@/services/api/types";
@@ -72,9 +88,20 @@ export const SMMS_DEFINITION: DepartmentDefinition = {
   windowFilter: "SIGNAL",
 };
 
+export interface ControllerStatusInfo {
+  status: "APPROVED" | "REJECTED" | "AWAITING_REVIEW" | "REWORK_REQUIRED" | "UNPLANNED";
+  label: string;
+  badgeTone: "success" | "danger" | "warning" | "info" | "default";
+  plan: BlockPlan | null;
+  planTask: BlockPlanTask | null;
+  decision: ControllerDecision | null;
+}
+
 function pad(value: number): string {
   return value.toString().padStart(2, "0");
 }
+
+export type InspectionRecord = TdmsInspection | TmsInspection | SmmsInspection;
 
 /**
  * Loads every dataset a department workspace needs from the real backend and
@@ -89,12 +116,27 @@ export function useDepartmentData(definition: DepartmentDefinition) {
   const blockRequirements = useAsyncResource(fetchUnifiedBlockRequirements, []);
   const planningTasks = useAsyncResource(fetchPlanningTasks, []);
   const priorities = useAsyncResource(fetchPlanningPriorities, []);
+  const plans = useAsyncResource(fetchOptimizationPlans, []);
+  const planTasks = useAsyncResource(fetchOptimizationPlanTasks, []);
+  const decisions = useAsyncResource(fetchOptimizationDecisions, []);
 
-  const assetRows = useMemo(() => {
-    const rows = (assets.data ?? []).filter((asset) =>
-      (asset.asset_type ?? "").toUpperCase() in new Set(definition.assetTypes.map((t) => t.toUpperCase())),
+  // Department-specific inspections
+  const inspections = useAsyncResource(async () => {
+    if (definition.key === "tdms" || definition.key === "engineering") {
+      return await fetchTdmsInspections({ limit: 500 });
+    }
+    if (definition.key === "tms") {
+      return await fetchTmsInspections({ limit: 500 });
+    }
+    return await fetchSmmsInspections({ limit: 500 });
+  }, [definition.key]);
+
+  // Asset filtering: Use array.includes for reliable membership check
+  const assetRows = useMemo<Asset[]>(() => {
+    const allowed = new Set(definition.assetTypes.map((t) => t.toUpperCase()));
+    return (assets.data ?? []).filter((asset) =>
+      allowed.has((asset.asset_type ?? "").toUpperCase()),
     );
-    return rows;
   }, [assets.data, definition.assetTypes]);
 
   const assetIds = useMemo(() => new Set(assetRows.map((asset) => asset.id)), [assetRows]);
@@ -115,10 +157,16 @@ export function useDepartmentData(definition: DepartmentDefinition) {
     [maintenance.data, assetIds],
   );
 
-  const maintenanceIds = useMemo(() => new Set(departmentMaintenance.map((m) => m.id)), [departmentMaintenance]);
+  const maintenanceIds = useMemo(
+    () => new Set(departmentMaintenance.map((m) => m.id)),
+    [departmentMaintenance],
+  );
 
   const departmentBlockRequirements = useMemo(
-    () => (blockRequirements.data ?? []).filter((b) => maintenanceIds.has(b.maintenance_requirement_id)),
+    () =>
+      (blockRequirements.data ?? []).filter((b) =>
+        maintenanceIds.has(b.maintenance_requirement_id),
+      ),
     [blockRequirements.data, maintenanceIds],
   );
 
@@ -130,9 +178,12 @@ export function useDepartmentData(definition: DepartmentDefinition) {
   const departmentTasks = useMemo(
     () =>
       (planningTasks.data ?? []).filter(
-        (task) => assetIds.has(task.asset_id) || blockRequirementIds.has(task.block_requirement_id ?? -1),
+        (task) =>
+          assetIds.has(task.asset_id) ||
+          blockRequirementIds.has(task.block_requirement_id ?? -1) ||
+          maintenanceIds.has(task.maintenance_requirement_id),
       ),
-    [planningTasks.data, assetIds, blockRequirementIds],
+    [planningTasks.data, assetIds, blockRequirementIds, maintenanceIds],
   );
 
   const taskIds = useMemo(() => new Set(departmentTasks.map((task) => task.id)), [departmentTasks]);
@@ -166,6 +217,12 @@ export function useDepartmentData(definition: DepartmentDefinition) {
     return map;
   }, [departmentDefects]);
 
+  const blockReqById = useMemo(() => {
+    const map = new Map<number, UnifiedBlockRequirement>();
+    for (const b of departmentBlockRequirements) map.set(b.id, b);
+    return map;
+  }, [departmentBlockRequirements]);
+
   const priorityByMaintenanceId = useMemo(() => {
     const map = new Map<number, PlanningPriority>();
     for (const task of departmentTasks) {
@@ -174,6 +231,166 @@ export function useDepartmentData(definition: DepartmentDefinition) {
     }
     return map;
   }, [departmentTasks, priorityByTask]);
+
+  // Lookup maps for Controller decision propagation
+  const planById = useMemo(() => {
+    const map = new Map<number, BlockPlan>();
+    for (const p of plans.data ?? []) map.set(p.id, p);
+    return map;
+  }, [plans.data]);
+
+  const planTaskByTaskId = useMemo(() => {
+    const map = new Map<number, BlockPlanTask>();
+    for (const pt of planTasks.data ?? []) map.set(pt.planning_task_id, pt);
+    return map;
+  }, [planTasks.data]);
+
+  const latestDecisionByPlanId = useMemo(() => {
+    const map = new Map<number, ControllerDecision>();
+    for (const d of decisions.data ?? []) {
+      const existing = map.get(d.block_plan_id);
+      if (!existing || new Date(d.decided_at).getTime() >= new Date(existing.decided_at).getTime()) {
+        map.set(d.block_plan_id, d);
+      }
+    }
+    return map;
+  }, [decisions.data]);
+
+  const taskByBlockReqId = useMemo(() => {
+    const map = new Map<number, PlanningTask>();
+    for (const t of departmentTasks) {
+      if (t.block_requirement_id) map.set(t.block_requirement_id, t);
+    }
+    return map;
+  }, [departmentTasks]);
+
+  const blockReqByMaintId = useMemo(() => {
+    const map = new Map<number, UnifiedBlockRequirement>();
+    for (const b of departmentBlockRequirements) {
+      map.set(b.maintenance_requirement_id, b);
+    }
+    return map;
+  }, [departmentBlockRequirements]);
+
+  /** Compute full Controller Decision status for a block requirement or planning task. */
+  const getControllerStatusForBlock = (blockReqId: number): ControllerStatusInfo => {
+    const task = taskByBlockReqId.get(blockReqId);
+    if (!task) {
+      return {
+        status: "UNPLANNED",
+        label: "Requirement Registered (Unscheduled)",
+        badgeTone: "default",
+        plan: null,
+        planTask: null,
+        decision: null,
+      };
+    }
+
+    const planTask = planTaskByTaskId.get(task.id);
+    if (!planTask) {
+      return {
+        status: "UNPLANNED",
+        label: "Task Open (Awaiting Window / Plan)",
+        badgeTone: "default",
+        plan: null,
+        planTask: null,
+        decision: null,
+      };
+    }
+
+    const plan = planById.get(planTask.block_plan_id) || null;
+    const decision = plan ? latestDecisionByPlanId.get(plan.id) || null : null;
+
+    if (decision?.decision === "APPROVED") {
+      return {
+        status: "APPROVED",
+        label: `Approved (${decision.controller_code || "Section Controller"})`,
+        badgeTone: "success",
+        plan,
+        planTask,
+        decision,
+      };
+    }
+
+    if (decision?.decision === "REJECTED" || plan?.status === "REWORK_REQUIRED") {
+      return {
+        status: "REWORK_REQUIRED",
+        label: decision?.remarks ? `Rejected: ${decision.remarks}` : "Rework Required",
+        badgeTone: "danger",
+        plan,
+        planTask,
+        decision,
+      };
+    }
+
+    if (plan && ["PROPOSED", "DRAFT", "VALIDATED", "SUBMITTED"].includes(plan.status)) {
+      return {
+        status: "AWAITING_REVIEW",
+        label: `Awaiting Controller (${plan.plan_code})`,
+        badgeTone: "info",
+        plan,
+        planTask,
+        decision,
+      };
+    }
+
+    return {
+      status: (plan?.status as ControllerStatusInfo["status"]) || "UNPLANNED",
+      label: plan?.plan_code ? `${plan.status} (${plan.plan_code})` : "Unplanned",
+      badgeTone: "default",
+      plan,
+      planTask,
+      decision,
+    };
+  };
+
+
+  /** Inspections grouped by asset id */
+  const inspectionsByAssetId = useMemo(() => {
+    const map = new Map<number, InspectionRecord[]>();
+    for (const item of (inspections.data ?? []) as InspectionRecord[]) {
+      const list = map.get(item.asset_id) ?? [];
+      list.push(item);
+      map.set(item.asset_id, list);
+    }
+    return map;
+  }, [inspections.data]);
+
+  /** Defects grouped by asset id */
+  const defectsByAssetId = useMemo(() => {
+    const map = new Map<number, UnifiedDefect[]>();
+    for (const d of departmentDefects) {
+      const list = map.get(d.asset_id) ?? [];
+      list.push(d);
+      map.set(d.asset_id, list);
+    }
+    return map;
+  }, [departmentDefects]);
+
+  /** Maintenance grouped by asset id */
+  const maintenanceByAssetId = useMemo(() => {
+    const map = new Map<number, UnifiedMaintenance[]>();
+    for (const m of departmentMaintenance) {
+      const list = map.get(m.asset_id) ?? [];
+      list.push(m);
+      map.set(m.asset_id, list);
+    }
+    return map;
+  }, [departmentMaintenance]);
+
+  const retryAll = () => {
+    assets.retry();
+    locations.retry();
+    defects.retry();
+    maintenance.retry();
+    blockRequirements.retry();
+    planningTasks.retry();
+    priorities.retry();
+    plans.retry();
+    planTasks.retry();
+    decisions.retry();
+    inspections.retry();
+  };
 
   /** Simple window schedule strings derived purely from real task timings. */
   const timeLabel = (value: string | null | undefined): string => {
@@ -198,8 +415,19 @@ export function useDepartmentData(definition: DepartmentDefinition) {
     taskById,
     maintenanceById,
     defectById,
+    blockReqById,
+    blockReqByMaintId,
+    taskByBlockReqId,
+    planById,
+    planTaskByTaskId,
+    latestDecisionByPlanId,
     priorityByTask,
     priorityByMaintenanceId,
+    inspectionsByAssetId,
+    defectsByAssetId,
+    maintenanceByAssetId,
+    getControllerStatusForBlock,
+    retryAll,
     timeLabel,
     rows: {
       assets: assetRows,
@@ -209,6 +437,9 @@ export function useDepartmentData(definition: DepartmentDefinition) {
       planningTasks: departmentTasks,
       priorities: departmentPriorities,
       locations: locations.data ?? [],
+      inspections: (inspections.data ?? []) as InspectionRecord[],
+      plans: plans.data ?? [],
+      decisions: decisions.data ?? [],
     },
     state: {
       assets: { loading: assets.loading, error: assets.error, retry: assets.retry },
@@ -221,6 +452,9 @@ export function useDepartmentData(definition: DepartmentDefinition) {
       },
       planningTasks: { loading: planningTasks.loading, error: planningTasks.error, retry: planningTasks.retry },
       priorities: { loading: priorities.loading, error: priorities.error, retry: priorities.retry },
+      plans: { loading: plans.loading, error: plans.error, retry: plans.retry },
+      decisions: { loading: decisions.loading, error: decisions.error, retry: decisions.retry },
+      inspections: { loading: inspections.loading, error: inspections.error, retry: inspections.retry },
     },
   };
 }

@@ -8,7 +8,7 @@ from app.models.asset import AssetMaster
 from app.models.asset_parameter import AssetParameter
 from app.models.location import LocationMaster
 from app.models.source_system import SourceSystem
-from app.schemas.asset import AssetCreate, AssetResponse
+from app.schemas.asset import AssetCreate, AssetResponse, AssetUpdate
 from app.schemas.asset_parameter import AssetParameterCreate, AssetParameterResponse
 
 
@@ -44,6 +44,34 @@ def get_asset(asset_id: int, db: Session = Depends(get_db)):
             detail="Asset not found",
         )
 
+    return asset
+
+
+@router.patch(
+    "/{asset_id}",
+    response_model=AssetResponse,
+    summary="Update an asset",
+    description="Update master asset status, name, subtype or remarks. Reflects across departments.",
+)
+def update_asset(
+    asset_id: int,
+    payload: AssetUpdate,
+    db: Session = Depends(get_db),
+):
+    asset = db.get(AssetMaster, asset_id)
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found",
+        )
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, val in update_data.items():
+        if val is not None:
+            setattr(asset, field, val)
+
+    db.commit()
+    db.refresh(asset)
     return asset
 
 

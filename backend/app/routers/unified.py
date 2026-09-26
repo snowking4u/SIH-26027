@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -7,14 +9,20 @@ from app.models.block_requirement import BlockRequirement
 from app.models.defect_failure import DefectFailure
 from app.models.maintenance_requirement import MaintenanceRequirement
 from app.schemas.block_requirement import BlockRequirementCreate, BlockRequirementResponse
-from app.schemas.defect_failure import DefectFailureResponse
+from app.schemas.defect_failure import DefectFailureResponse, DefectFailureUpdate
 from app.schemas.maintenance_requirement import MaintenanceRequirementResponse
-from app.schemas.unified import NormalizeSummary
+from app.schemas.unified import (
+    DepartmentMaintenanceRequestCreate,
+    DepartmentMaintenanceRequestResponse,
+    MaintenanceRequirementUpdate,
+    NormalizeSummary,
+)
 from app.services.unified_maintenance import (
     normalize_smms,
     normalize_tdms,
     normalize_tms,
 )
+from app.services.unified_workflow import submit_department_maintenance_request
 
 
 router = APIRouter(prefix="/api/unified", tags=["Unified Maintenance Layer"])
@@ -63,6 +71,39 @@ def get_defect_failure(defect_failure_id: int, db: Session = Depends(get_db)):
             detail="Defect/failure record not found",
         )
 
+    return record
+
+
+@router.patch(
+    "/defects/{defect_failure_id}",
+    response_model=DefectFailureResponse,
+    tags=["Unified Defect/Failure"],
+    summary="Update a unified defect/failure record",
+    description="Update defect status (e.g. OPEN, IN_PROGRESS, RECTIFIED) and remarks. Sets rectified_at automatically if marked RECTIFIED.",
+)
+def patch_defect_failure(
+    defect_failure_id: int,
+    payload: DefectFailureUpdate,
+    db: Session = Depends(get_db),
+):
+    record = db.get(DefectFailure, defect_failure_id)
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Defect/failure record not found",
+        )
+
+    if payload.status is not None:
+        record.status = payload.status
+        if payload.status.upper() == "RECTIFIED" and not payload.rectified_at and not record.rectified_at:
+            record.rectified_at = datetime.utcnow()
+    if payload.rectified_at is not None:
+        record.rectified_at = payload.rectified_at
+    if payload.remarks is not None:
+        record.remarks = payload.remarks
+
+    db.commit()
+    db.refresh(record)
     return record
 
 
@@ -115,6 +156,35 @@ def get_maintenance_requirement(
             detail="Maintenance requirement not found",
         )
 
+    return record
+
+
+@router.patch(
+    "/maintenance/{maintenance_requirement_id}",
+    response_model=MaintenanceRequirementResponse,
+    tags=["Unified Maintenance Requirement"],
+    summary="Update a unified maintenance requirement",
+    description="Update maintenance requirement status or remarks.",
+)
+def patch_maintenance_requirement(
+    maintenance_requirement_id: int,
+    payload: MaintenanceRequirementUpdate,
+    db: Session = Depends(get_db),
+):
+    record = db.get(MaintenanceRequirement, maintenance_requirement_id)
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Maintenance requirement not found",
+        )
+
+    if payload.status is not None:
+        record.status = payload.status
+    if payload.remarks is not None:
+        record.remarks = payload.remarks
+
+    db.commit()
+    db.refresh(record)
     return record
 
 
@@ -191,6 +261,26 @@ def create_block_requirement(
     db.commit()
     db.refresh(block_requirement)
     return block_requirement
+
+
+@router.post(
+    "/maintenance-requests",
+    response_model=DepartmentMaintenanceRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Unified Maintenance Requirement"],
+    summary="Submit a departmental maintenance & block request",
+    description=(
+        "Full operational workflow: creates source maintenance (+ defect if specified), "
+        "normalizes into unified requirement, creates operational block requirement, "
+        "generates planning task, evaluates candidate window, and creates proposed block "
+        "plan for Controller review."
+    ),
+)
+def create_department_maintenance_request(
+    payload: DepartmentMaintenanceRequestCreate,
+    db: Session = Depends(get_db),
+):
+    return submit_department_maintenance_request(db, payload)
 
 
 @router.post(
