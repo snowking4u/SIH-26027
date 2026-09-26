@@ -1,148 +1,148 @@
 {
   "dataset_id": "SYN-STEP11-20260925-0001",
   "generator_version": "STEP11-1.0",
-  "seed": 42,
-  "scale": "tiny",
-  "scenario": "normal",
+  "seed": 26027,
+  "scale": "small",
+  "scenario": "mixed",
   "start_date": "2026-09-25",
-  "days": 1,
+  "days": 3,
   "batch_size": 1000,
   "with_optimization": true,
-  "generation_timestamp": "2026-09-25T09:25:52",
+  "generation_timestamp": "2026-09-25T19:03:16",
   "configuration_summary": {
-    "seed": 42,
-    "scale": "tiny",
-    "days": 1,
+    "seed": 26027,
+    "scale": "small",
+    "days": 3,
     "start_date": "2026-09-25",
-    "scenario": "normal",
+    "scenario": "mixed",
     "batch_size": 1000,
     "with_optimization": true,
-    "window_template": "normal",
+    "window_template": "mixed",
     "targets": {
-      "assets": 10,
-      "trains": 10,
-      "inspections": 30,
-      "defects": 10,
-      "maintenance": 10,
-      "stations": 3,
-      "resources": 6
+      "assets": 100,
+      "trains": 100,
+      "inspections": 550,
+      "defects": 210,
+      "maintenance": 210,
+      "stations": 10,
+      "resources": 36
     }
   },
   "windows": {
-    "derived": 18,
-    "tagged_as_synthetic": 18
+    "derived": 120,
+    "tagged_as_synthetic": 120
   },
   "master_stats": {
-    "locations": 6,
-    "assets": 10,
-    "asset_parameters": 2
+    "locations": 20,
+    "assets": 100,
+    "asset_parameters": 42
   },
   "source_stats": {
     "tms": {
-      "inspections": 30,
-      "defects": 10,
-      "maintenance": 10
+      "inspections": 550,
+      "defects": 210,
+      "maintenance": 210
     },
     "tdms": {
-      "inspections": 30,
-      "failures": 10,
-      "maintenance": 11
+      "inspections": 550,
+      "failures": 210,
+      "maintenance": 213
     },
     "smms": {
-      "inspections": 30,
-      "alerts": 10,
-      "maintenance": 10
+      "inspections": 550,
+      "alerts": 210,
+      "maintenance": 210
     }
   },
   "normalized": {
     "tms": {
-      "processed": 20,
-      "created": 20,
+      "processed": 420,
+      "created": 420,
       "updated": 0,
       "skipped": 0
     },
     "tdms": {
-      "processed": 21,
-      "created": 21,
+      "processed": 423,
+      "created": 423,
       "updated": 0,
       "skipped": 0
     },
     "smms": {
-      "processed": 20,
-      "created": 20,
+      "processed": 420,
+      "created": 420,
       "updated": 0,
       "skipped": 0
     }
   },
   "block_requirements": {
-    "requirements_processed": 31,
-    "block_requirements_created": 30,
-    "skipped_no_block_edge": 1,
+    "requirements_processed": 633,
+    "block_requirements_created": 601,
+    "skipped_no_block_edge": 32,
     "skipped_existing": 0
   },
   "planning": {
-    "resources_created": 6,
-    "task_resources_created": 62,
+    "resources_created": 36,
+    "task_resources_created": 1222,
     "task_resources_skipped": 0,
-    "dependencies_created": 17,
+    "dependencies_created": 554,
     "dependencies_skipped": 0,
     "planning_tasks": {
-      "processed": 31,
-      "created": 31,
+      "processed": 633,
+      "created": 611,
       "updated": 0,
-      "skipped": 0
+      "skipped": 22
     },
     "constraints": {
-      "processed": 31,
-      "created": 121,
+      "processed": 611,
+      "created": 2614,
       "updated": 0,
-      "skipped": 1
+      "skipped": 32
     }
   },
   "candidates": {
-    "processed": 558,
-    "created": 558,
+    "processed": 73320,
+    "created": 73320,
     "skipped": 0,
-    "infeasible": 510,
-    "requires_review": 19
+    "infeasible": 72244,
+    "requires_review": 1015
   },
   "optimization": {
     "run_created": 1,
-    "inputs_created": 31,
+    "inputs_created": 611,
     "skipped_run": 0,
     "run_code": "SYN-OPT-SYN-STEP11-20260925-0001-0001"
   },
   "table_counts": {
-    "location_master": 6,
-    "asset_master": 10,
-    "asset_parameter": 2,
+    "location_master": 20,
+    "asset_master": 100,
+    "asset_parameter": 42,
     "source_system": 4,
-    "train": 10,
-    "train_schedule": 6,
-    "train_movement": 20,
-    "line_occupancy": 24,
-    "operational_event": 10,
-    "available_window": 18,
-    "tms_inspection": 30,
-    "tms_defect": 10,
-    "tms_maintenance": 10,
-    "tdms_inspection": 30,
-    "tdms_failure": 10,
-    "tdms_maintenance": 11,
-    "smms_inspection": 30,
-    "smms_alert": 10,
-    "smms_maintenance": 10,
-    "defect_failure": 30,
-    "maintenance_requirement": 31,
-    "block_requirement": 30,
-    "planning_task": 31,
-    "planning_constraint": 121,
-    "planning_resource": 6,
-    "task_resource": 62,
-    "task_dependency": 17,
-    "candidate_block_window": 558,
+    "train": 100,
+    "train_schedule": 60,
+    "train_movement": 600,
+    "line_occupancy": 180,
+    "operational_event": 304,
+    "available_window": 120,
+    "tms_inspection": 550,
+    "tms_defect": 210,
+    "tms_maintenance": 210,
+    "tdms_inspection": 550,
+    "tdms_failure": 210,
+    "tdms_maintenance": 213,
+    "smms_inspection": 550,
+    "smms_alert": 210,
+    "smms_maintenance": 210,
+    "defect_failure": 630,
+    "maintenance_requirement": 633,
+    "block_requirement": 601,
+    "planning_task": 611,
+    "planning_constraint": 2614,
+    "planning_resource": 36,
+    "task_resource": 1222,
+    "task_dependency": 554,
+    "candidate_block_window": 73320,
     "optimization_run": 1,
-    "optimization_input": 31,
+    "optimization_input": 611,
     "optimization_output": 0,
     "block_plan": 0,
     "block_plan_task": 0,
